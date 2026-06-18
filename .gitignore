@@ -1,0 +1,79 @@
+# Environment files
+.env
+.env.*
+!.env.example
+!*.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+build/
+dist/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Backend local/runtime files
+backend/.venv/
+backend/.pytest_cache/
+backend/tmp_ficha/
+backend/*.log
+backend/*.err.log
+backend/*.out.log
+backend/*.script.err.log
+backend/*.script.out.log
+
+# Node / React / Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/*.log
+frontend/*.err.log
+frontend/*.out.log
+frontend/*.script.err.log
+frontend/*.script.out.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local package manager cache and bundled tooling
+.npm-cache/
+tools/node/
+node-v*-win-*.zip
+
+# Database and local data
+*.sqlite
+*.sqlite3
+*.db
+postgres-data/
+pgdata/
+
+# Docker override files
+compose.override.yml
+docker-compose.override.yml
+
+# IDEs and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini

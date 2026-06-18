@@ -1,0 +1,7 @@
+export { UnidadeSocialPage } from './UnidadeSocialPage'
+export { ColaboradoresPage } from './ColaboradoresPage'
+export { AtividadesPage } from './AtividadesPage'
+export { GruposPage } from './GruposPage'
+export { InscricoesPage } from './InscricoesPage'
+export { UsuarioPage } from './usuarios'
+export { CadastrosPage } from './CadastrosPage'
