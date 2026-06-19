@@ -28,7 +28,10 @@ export function DashboardPage() {
       <div className="dashboard-watermark" aria-hidden="true">{unitTitle}</div>
 
       <div className="dashboard-hero-content">
-        <span className="dashboard-kicker">Painel operacional</span>
+        <div className="dashboard-kicker">
+          <span>Painel operacional</span>
+        </div>
+
         <h1 id="dashboard-title">{unitTitle}</h1>
 
         <div className="dashboard-mission" aria-label="Missão">
