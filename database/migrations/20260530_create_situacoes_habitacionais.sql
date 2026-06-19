@@ -1,8 +1,8 @@
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS situacoes_habitacionais (
+CREATE TABLE IF NOT EXISTS usuario_situacao_habitacional (
     id SERIAL PRIMARY KEY,
-    usuario_id INTEGER NOT NULL UNIQUE REFERENCES usuarios(id) ON DELETE CASCADE,
+    usuario_id INTEGER NOT NULL UNIQUE REFERENCES usuario(id) ON DELETE CASCADE,
     tipo_habitacao VARCHAR(40),
     tipo_habitacao_outro VARCHAR(120),
     ocupacao VARCHAR(60),
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS situacoes_habitacionais (
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_situacoes_habitacionais_usuario_id
-    ON situacoes_habitacionais(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_usuario_situacao_habitacional_usuario_id
+    ON usuario_situacao_habitacional(usuario_id);
 
 COMMIT;

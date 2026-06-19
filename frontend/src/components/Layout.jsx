@@ -1,11 +1,12 @@
-import { NavLink } from 'react-router-dom'
-import { clearAuth, getAuth } from '../auth'
+import { NavLink, useLocation } from 'react-router-dom'
+import { clearAuth, getAuth, getDisplayUnitName } from '../auth'
 
 function normalizeProfile(value) {
   return String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
 export function Layout({ children }) {
+  const location = useLocation()
   const auth = getAuth()
   const permissions = auth?.permissions || []
   const profile = normalizeProfile(auth?.profile)
@@ -19,13 +20,20 @@ export function Layout({ children }) {
   const canSeeUsuario = !isSecretariaAdministrativa
   const canSeeControle = !isSecretariaAdministrativa
   const canSeeAcompanhamento = !isSecretariaAdministrativa
-  const brandName = auth?.social_unit_name || 'ACM'
+  const brandName = getDisplayUnitName(auth)
+  const currentPath = location.pathname
+  const isCadastrosActive = currentPath.startsWith('/cadastros')
+  const isControleActive = currentPath.startsWith('/classificacao-grupo')
+    || currentPath.startsWith('/frequencia')
+    || currentPath.startsWith('/atendimentos')
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <img className="brand-logo" src="/logo-acm-ymca.png" alt="ACM YMCA" />
+          <NavLink to="/" className="brand-logo-link" aria-label="Ir para a tela inicial">
+            <img className="brand-logo" src="/logo-acm-nos-somos.jpg" alt="ACM YMCA" />
+          </NavLink>
           <span className="brand-product">{brandName}</span>
         </div>
 
@@ -42,9 +50,9 @@ export function Layout({ children }) {
       <nav className="primary-nav">
         <div className="primary-nav-inner">
           <div className="nav-group">
-            <NavLink to="/cadastros/unidade-social" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <button type="button" className={`nav-item nav-trigger ${isCadastrosActive ? 'active' : ''}`} aria-haspopup="true">
               Cadastros
-            </NavLink>
+            </button>
             <div className="sub-nav">
               {canSeeUnits && <NavLink to="/cadastros/unidade-social" className="sub-nav-item">Unidade social</NavLink>}
               {canSeeCollaborators && <NavLink to="/cadastros/colaboradores" className="sub-nav-item">Colaboradores</NavLink>}
@@ -56,12 +64,9 @@ export function Layout({ children }) {
 
           {canSeeControle && (
             <div className="nav-group">
-              <NavLink
-                to="/classificacao-grupo"
-                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              >
+              <button type="button" className={`nav-item nav-trigger ${isControleActive ? 'active' : ''}`} aria-haspopup="true">
                 Controle
-              </NavLink>
+              </button>
               <div className="sub-nav">
                 <NavLink to="/classificacao-grupo" className="sub-nav-item">Classificação por Grupo</NavLink>
                 <NavLink to="/frequencia" className="sub-nav-item">Frequência</NavLink>

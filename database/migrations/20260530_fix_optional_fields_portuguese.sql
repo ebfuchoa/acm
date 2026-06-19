@@ -1,4 +1,4 @@
-ALTER TABLE IF EXISTS usuarios
+ALTER TABLE IF EXISTS usuario
     ALTER COLUMN nome_pai DROP NOT NULL,
     ALTER COLUMN nome_mae DROP NOT NULL,
     ALTER COLUMN responsavel_observacao DROP NOT NULL,

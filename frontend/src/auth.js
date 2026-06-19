@@ -24,3 +24,13 @@ export function clearAuth() {
 export function isAuthenticated() {
   return Boolean(getToken())
 }
+
+export function getDisplayUnitName(auth = getAuth()) {
+  if (!auth || auth.is_admin) return 'ACM'
+  return auth.social_unit_name || 'ACM'
+}
+
+export function getDisplayUnitTitle(auth = getAuth()) {
+  const unitName = getDisplayUnitName(auth)
+  return unitName === 'ACM' ? 'ACM' : `Unidade Social - ${unitName}`
+}

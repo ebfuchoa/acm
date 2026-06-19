@@ -1,8 +1,8 @@
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS condicoes_saude (
+CREATE TABLE IF NOT EXISTS usuario_condicao_saude (
     id SERIAL PRIMARY KEY,
-    usuario_id INTEGER NOT NULL UNIQUE REFERENCES usuarios(id) ON DELETE CASCADE,
+    usuario_id INTEGER NOT NULL UNIQUE REFERENCES usuario(id) ON DELETE CASCADE,
     assistencia_medica TEXT,
     problema_saude TEXT,
     alergia TEXT,
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS condicoes_saude (
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_condicoes_saude_usuario_id
-    ON condicoes_saude(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_usuario_condicao_saude_usuario_id
+    ON usuario_condicao_saude(usuario_id);
 
 COMMIT;

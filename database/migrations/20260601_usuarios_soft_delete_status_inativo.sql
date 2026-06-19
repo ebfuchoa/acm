@@ -13,6 +13,6 @@ BEGIN
     END IF;
 END $$;
 
-UPDATE usuarios
+UPDATE usuario
 SET status = 'inativo'
 WHERE status::text IN ('suspenso', 'desligado');

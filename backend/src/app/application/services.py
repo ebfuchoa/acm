@@ -3,17 +3,24 @@
 from fastapi import HTTPException, status
 from sqlalchemy import String, and_, cast, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.application import schemas
-from app.domain.enums import AttendanceStatus, JustificationStatus, ReportStatus, UserStatus
+from app.domain.enums import AttendanceStatus, JustificationStatus, ReportStatus, UserMovementType, UserStatus
 from app.infrastructure.db import models
+from app.infrastructure.repositories.user_profile_sections import (
+    NORMALIZED_USER_SECTION_FIELDS,
+    UserProfileSectionsRepository,
+)
+from app.infrastructure.repositories.user_movements import UserMovementRepository
 from app.interfaces.api.auth import hash_password
 
 
 class CrudService:
     def __init__(self, db: Session):
         self.db = db
+        self.user_profile_sections_repository = UserProfileSectionsRepository(db)
+        self.user_movement_repository = UserMovementRepository(db)
 
     @staticmethod
     def _has_meaningful_data(value: object) -> bool:
@@ -28,6 +35,22 @@ class CrudService:
         if isinstance(value, list):
             return any(CrudService._has_meaningful_data(item) for item in value)
         return True
+
+    @staticmethod
+    def _user_table_data(payload_data: dict) -> dict:
+        return {
+            key: value
+            for key, value in payload_data.items()
+            if key not in NORMALIZED_USER_SECTION_FIELDS
+        }
+
+    @staticmethod
+    def _user_load_options() -> tuple:
+        return (
+            selectinload(models.User.responsible),
+            selectinload(models.User.residential),
+            selectinload(models.User.schooling),
+        )
 
     def _delete_attendance_dependencies(
         self,
@@ -231,6 +254,7 @@ class CrudService:
         payload_data = payload.model_dump(exclude={"composicao_familiar", "situacao_habitacional", "condicao_saude", "situacao_familiar", "parecer"})
         payload_data["status"] = UserStatus.ACTIVE.value
         payload_data["status_updated_at"] = None
+        user_data = self._user_table_data(payload_data)
         composicao_payload = payload.model_dump().get("composicao_familiar", [])
         situacao_payload = payload.model_dump().get("situacao_habitacional")
         condicao_payload = payload.model_dump().get("condicao_saude")
@@ -249,9 +273,15 @@ class CrudService:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="JÃ¡ existe usuÃ¡rio com o mesmo RG.")
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="JÃ¡ existe usuÃ¡rio com o mesmo NIS.")
         try:
-            user = models.User(**payload_data)
+            user = models.User(**user_data)
             self.db.add(user)
             self.db.flush()
+            movement_date = user.created_at.date() if user.created_at else datetime.utcnow().date()
+            self.user_movement_repository.create(
+                user_id=user.id,
+                movement_type=UserMovementType.ENTRADA,
+                movement_date=movement_date,
+            )
             self.db.add(models.UserSocialUnit(user_id=user.id, social_unit_id=user.unit_id))
             for item in composicao_payload:
                 self.db.add(
@@ -294,6 +324,7 @@ class CrudService:
                         **parecer_payload,
                     )
                 )
+            self.user_profile_sections_repository.upsert_for_user(user.id, payload_data)
             self.db.commit()
             self.db.refresh(user)
             return user
@@ -311,13 +342,17 @@ class CrudService:
             )
 
     def list_users(self, status_filter: str | None = None) -> list[models.User]:
-        query = select(models.User)
+        query = select(models.User).options(*self._user_load_options())
         if status_filter:
             query = query.where(cast(models.User.status, String) == status_filter)
         return list(self.db.scalars(query).all())
 
     def get_user(self, user_id: int) -> models.User:
-        user = self.db.get(models.User, user_id)
+        user = self.db.scalar(
+            select(models.User)
+            .options(*self._user_load_options())
+            .where(models.User.id == user_id)
+        )
         if user is None:
             raise HTTPException(status_code=404, detail="UsuÃ¡rio nÃ£o encontrado.")
         return user
@@ -326,6 +361,7 @@ class CrudService:
         user = self.get_user(user_id)
         payload_data = payload.model_dump(exclude={"composicao_familiar", "situacao_habitacional", "condicao_saude", "situacao_familiar", "parecer"})
         payload_data["status"] = user.status
+        user_data = self._user_table_data(payload_data)
         composicao_payload = payload.model_dump().get("composicao_familiar", [])
         situacao_payload = payload.model_dump().get("situacao_habitacional")
         condicao_payload = payload.model_dump().get("condicao_saude")
@@ -346,7 +382,7 @@ class CrudService:
             if duplicate.rg == payload_data["rg"]:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="JÃ¡ existe usuÃ¡rio com o mesmo RG.")
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="JÃ¡ existe usuÃ¡rio com o mesmo NIS.")
-        for key, value in payload_data.items():
+        for key, value in user_data.items():
             setattr(user, key, value)
         try:
             self.db.execute(delete(models.UserSocialUnit).where(models.UserSocialUnit.user_id == user_id))
@@ -397,6 +433,7 @@ class CrudService:
                         **parecer_payload,
                     )
                 )
+            self.user_profile_sections_repository.upsert_for_user(user.id, payload_data)
             self.db.commit()
             self.db.refresh(user)
             return user
@@ -414,8 +451,14 @@ class CrudService:
         try:
             current_status = user.status.value if isinstance(user.status, UserStatus) else str(user.status)
             if current_status != UserStatus.INACTIVE.value:
+                status_updated_at = datetime.utcnow()
                 user.status = UserStatus.INACTIVE.value
-                user.status_updated_at = datetime.utcnow()
+                user.status_updated_at = status_updated_at
+                self.user_movement_repository.create(
+                    user_id=user.id,
+                    movement_type=UserMovementType.SAIDA,
+                    movement_date=status_updated_at.date(),
+                )
                 self.db.execute(delete(models.UserGroup).where(models.UserGroup.user_id == user_id))
             self.db.commit()
         except IntegrityError:
@@ -429,8 +472,16 @@ class CrudService:
         user = self.db.get(models.User, user_id)
         if user is None:
             raise HTTPException(status_code=404, detail="UsuÃ¡rio nÃ£o encontrado.")
-        user.status = UserStatus.ACTIVE.value
-        user.status_updated_at = datetime.utcnow()
+        current_status = user.status.value if isinstance(user.status, UserStatus) else str(user.status)
+        if current_status != UserStatus.ACTIVE.value:
+            status_updated_at = datetime.utcnow()
+            user.status = UserStatus.ACTIVE.value
+            user.status_updated_at = status_updated_at
+            self.user_movement_repository.create(
+                user_id=user.id,
+                movement_type=UserMovementType.ENTRADA,
+                movement_date=status_updated_at.date(),
+            )
         self.db.commit()
         self.db.refresh(user)
         return user

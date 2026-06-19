@@ -1,8 +1,8 @@
 BEGIN;
 
-CREATE TABLE IF NOT EXISTS composicoes_familiares (
+CREATE TABLE IF NOT EXISTS usuario_composicao_familiar (
     id SERIAL PRIMARY KEY,
-    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    usuario_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
     nome VARCHAR(200) NOT NULL,
     parentesco VARCHAR(80) NOT NULL,
     sexo VARCHAR(20) NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS composicoes_familiares (
     atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_composicoes_familiares_usuario_id
-    ON composicoes_familiares(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_usuario_composicao_familiar_usuario_id
+    ON usuario_composicao_familiar(usuario_id);
 
 COMMIT;

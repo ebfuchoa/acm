@@ -8,6 +8,11 @@ class UserStatus(str, Enum):
     DISMISSED = "desligado"
 
 
+class UserMovementType(str, Enum):
+    ENTRADA = "ENTRADA"
+    SAIDA = "SAIDA"
+
+
 class AttendanceStatus(str, Enum):
     PRESENT = "presente"
     ABSENT = "falta"

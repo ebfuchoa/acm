@@ -13,6 +13,6 @@ BEGIN
     END IF;
 END $$;
 
-UPDATE usuarios
+UPDATE usuario
 SET status = 'ativo'
 WHERE status::text <> 'inativo';

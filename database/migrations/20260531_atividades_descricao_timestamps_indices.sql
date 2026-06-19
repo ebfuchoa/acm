@@ -1,11 +1,11 @@
-ALTER TABLE atividades
+ALTER TABLE atividade
 ADD COLUMN IF NOT EXISTS descricao TEXT;
 
-ALTER TABLE atividades
+ALTER TABLE atividade
 ADD COLUMN IF NOT EXISTS criado_em TIMESTAMP NOT NULL DEFAULT NOW();
 
-ALTER TABLE atividades
+ALTER TABLE atividade
 ADD COLUMN IF NOT EXISTS atualizado_em TIMESTAMP NOT NULL DEFAULT NOW();
 
-CREATE INDEX IF NOT EXISTS idx_atividades_nome ON atividades (nome);
-CREATE INDEX IF NOT EXISTS idx_atividades_nome_lower ON atividades ((LOWER(nome)));
+CREATE INDEX IF NOT EXISTS idx_atividade_nome ON atividade (nome);
+CREATE INDEX IF NOT EXISTS idx_atividade_nome_lower ON atividade ((LOWER(nome)));

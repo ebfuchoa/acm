@@ -4,10 +4,10 @@ BEGIN
         SELECT 1
         FROM information_schema.columns
         WHERE table_schema = 'public'
-          AND table_name = 'usuarios'
+          AND table_name = 'usuario'
           AND column_name = 'full_name'
     ) THEN
-        ALTER TABLE usuarios DROP COLUMN full_name;
+        ALTER TABLE usuario DROP COLUMN full_name;
     END IF;
 END $$;
 
@@ -16,10 +16,10 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1
         FROM pg_constraint
-        WHERE conrelid = 'usuarios'::regclass
-          AND conname = 'uq_usuarios_rg'
+        WHERE conrelid = 'usuario'::regclass
+          AND conname = 'uq_usuario_rg'
     ) THEN
-        ALTER TABLE usuarios ADD CONSTRAINT uq_usuarios_rg UNIQUE (rg);
+        ALTER TABLE usuario ADD CONSTRAINT uq_usuario_rg UNIQUE (rg);
     END IF;
 END $$;
 
@@ -28,10 +28,10 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1
         FROM pg_constraint
-        WHERE conrelid = 'usuarios'::regclass
-          AND conname = 'uq_usuarios_numero_nis'
+        WHERE conrelid = 'usuario'::regclass
+          AND conname = 'uq_usuario_numero_nis'
     ) THEN
-        ALTER TABLE usuarios ADD CONSTRAINT uq_usuarios_numero_nis UNIQUE (numero_nis);
+        ALTER TABLE usuario ADD CONSTRAINT uq_usuario_numero_nis UNIQUE (numero_nis);
     END IF;
 END $$;
 

@@ -1,7 +1,7 @@
-CREATE TABLE IF NOT EXISTS atendimentos (
+CREATE TABLE IF NOT EXISTS atendimento (
   id SERIAL PRIMARY KEY,
-  unidade_social_id INTEGER NOT NULL REFERENCES unidades_sociais(id),
-  colaborador_id INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL,
+  unidade_social_id INTEGER NOT NULL REFERENCES unidade_social(id),
+  colaborador_id INTEGER REFERENCES colaborador(id) ON DELETE SET NULL,
   atendente_nome VARCHAR(200) NOT NULL DEFAULT 'Não informado',
   atendente_funcao VARCHAR(80) NOT NULL DEFAULT 'Não informado',
   data_atendimento DATE NOT NULL,
@@ -11,37 +11,37 @@ CREATE TABLE IF NOT EXISTS atendimentos (
   atualizado_em TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE atendimentos
-  ADD COLUMN IF NOT EXISTS colaborador_id INTEGER REFERENCES colaboradores(id) ON DELETE SET NULL;
+ALTER TABLE atendimento
+  ADD COLUMN IF NOT EXISTS colaborador_id INTEGER REFERENCES colaborador(id) ON DELETE SET NULL;
 
-ALTER TABLE atendimentos
+ALTER TABLE atendimento
   ADD COLUMN IF NOT EXISTS atendente_nome VARCHAR(200) NOT NULL DEFAULT 'Não informado';
 
-ALTER TABLE atendimentos
+ALTER TABLE atendimento
   ADD COLUMN IF NOT EXISTS atendente_funcao VARCHAR(80) NOT NULL DEFAULT 'Não informado';
 
-CREATE INDEX IF NOT EXISTS idx_atendimentos_unidade_social_id
-  ON atendimentos (unidade_social_id);
+CREATE INDEX IF NOT EXISTS idx_atendimento_unidade_social_id
+  ON atendimento (unidade_social_id);
 
-CREATE INDEX IF NOT EXISTS idx_atendimentos_colaborador_id
-  ON atendimentos (colaborador_id);
+CREATE INDEX IF NOT EXISTS idx_atendimento_colaborador_id
+  ON atendimento (colaborador_id);
 
-CREATE INDEX IF NOT EXISTS idx_atendimentos_data_atendimento
-  ON atendimentos (data_atendimento);
+CREATE INDEX IF NOT EXISTS idx_atendimento_data_atendimento
+  ON atendimento (data_atendimento);
 
-CREATE INDEX IF NOT EXISTS idx_atendimentos_nome
-  ON atendimentos (nome);
+CREATE INDEX IF NOT EXISTS idx_atendimento_nome
+  ON atendimento (nome);
 
 INSERT INTO permissoes (codigo, descricao)
-SELECT 'atendimentos.read', 'Permite visualizar atendimentos'
+SELECT 'atendimentos.read', 'Permite visualizar atendimento'
 WHERE NOT EXISTS (SELECT 1 FROM permissoes WHERE codigo = 'atendimentos.read');
 
 INSERT INTO permissoes (codigo, descricao)
-SELECT 'atendimentos.write', 'Permite cadastrar e editar atendimentos'
+SELECT 'atendimentos.write', 'Permite cadastrar e editar atendimento'
 WHERE NOT EXISTS (SELECT 1 FROM permissoes WHERE codigo = 'atendimentos.write');
 
 INSERT INTO permissoes (codigo, descricao)
-SELECT 'atendimentos.delete', 'Permite excluir atendimentos'
+SELECT 'atendimentos.delete', 'Permite excluir atendimento'
 WHERE NOT EXISTS (SELECT 1 FROM permissoes WHERE codigo = 'atendimentos.delete');
 
 INSERT INTO perfis_permissoes (perfil_id, permissao_id)

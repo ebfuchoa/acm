@@ -1,13 +1,13 @@
 INSERT INTO permissoes (codigo, descricao)
-SELECT 'activities.read', 'Permite visualizar atividades'
+SELECT 'activities.read', 'Permite visualizar atividade'
 WHERE NOT EXISTS (SELECT 1 FROM permissoes WHERE codigo = 'activities.read');
 
 INSERT INTO permissoes (codigo, descricao)
-SELECT 'activities.write', 'Permite cadastrar e editar atividades'
+SELECT 'activities.write', 'Permite cadastrar e editar atividade'
 WHERE NOT EXISTS (SELECT 1 FROM permissoes WHERE codigo = 'activities.write');
 
 INSERT INTO permissoes (codigo, descricao)
-SELECT 'activities.delete', 'Permite excluir atividades'
+SELECT 'activities.delete', 'Permite excluir atividade'
 WHERE NOT EXISTS (SELECT 1 FROM permissoes WHERE codigo = 'activities.delete');
 
 INSERT INTO perfis_permissoes (perfil_id, permissao_id)

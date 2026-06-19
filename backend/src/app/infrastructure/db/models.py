@@ -16,12 +16,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.domain.enums import AttendanceStatus, JustificationStatus, ReportStatus, UserStatus
+from app.domain.enums import AttendanceStatus, JustificationStatus, ReportStatus, UserMovementType, UserStatus
 from app.infrastructure.db.base import Base
 
 
 class Unit(Base):
-    __tablename__ = "unidades_sociais"
+    __tablename__ = "unidade_social"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
     name: Mapped[str] = mapped_column("nome", String(150), unique=True)
@@ -44,13 +44,13 @@ class Unit(Base):
 
 
 class Atendimento(Base):
-    __tablename__ = "atendimentos"
+    __tablename__ = "atendimento"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    unidade_social_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidades_sociais.id"))
+    unidade_social_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
     colaborador_id: Mapped[int | None] = mapped_column(
         "colaborador_id",
-        ForeignKey("colaboradores.id", ondelete="SET NULL"),
+        ForeignKey("colaborador.id", ondelete="SET NULL"),
         nullable=True,
     )
     atendente_nome: Mapped[str] = mapped_column("atendente_nome", String(200))
@@ -69,10 +69,10 @@ class Atendimento(Base):
 
 
 class User(Base):
-    __tablename__ = "usuarios"
+    __tablename__ = "usuario"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidades_sociais.id"))
+    unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
     name: Mapped[str] = mapped_column("nome", String(200))
     age: Mapped[int] = mapped_column("idade", Integer)
     birth_date: Mapped[date] = mapped_column("data_nascimento", Date)
@@ -84,39 +84,6 @@ class User(Base):
     shift: Mapped[str] = mapped_column("turno", String(20))
     father_name: Mapped[str | None] = mapped_column("nome_pai", String(200), nullable=True)
     mother_name: Mapped[str | None] = mapped_column("nome_mae", String(200), nullable=True)
-    responsible_name: Mapped[str] = mapped_column("responsavel_nome", String(200))
-    responsible_age: Mapped[int] = mapped_column("responsavel_idade", Integer)
-    responsible_gender: Mapped[str] = mapped_column("responsavel_sexo", String(20))
-    responsible_birth_place: Mapped[str] = mapped_column("responsavel_naturalidade", String(150))
-    responsible_marital_status: Mapped[str] = mapped_column("responsavel_estado_civil", String(20))
-    responsible_education: Mapped[str] = mapped_column("responsavel_escolaridade", String(120))
-    responsible_rg: Mapped[str] = mapped_column("responsavel_rg", String(20))
-    responsible_issuing_agency_uf: Mapped[str] = mapped_column("responsavel_orgao_emissor_uf", String(40))
-    responsible_cpf: Mapped[str] = mapped_column("responsavel_cpf", String(14))
-    responsible_workplace: Mapped[str | None] = mapped_column("responsavel_local_trabalho", String(180), nullable=True)
-    responsible_income: Mapped[float | None] = mapped_column("responsavel_renda_bruta", Numeric(12, 2), nullable=True)
-    responsible_state: Mapped[str | None] = mapped_column("responsavel_estado", String(2), nullable=True)
-    responsible_city: Mapped[str | None] = mapped_column("responsavel_municipio", String(100), nullable=True)
-    responsible_phone: Mapped[str | None] = mapped_column("responsavel_telefone", String(20), nullable=True)
-    responsible_schedule: Mapped[str | None] = mapped_column("responsavel_horario", String(20), nullable=True)
-    responsible_notes: Mapped[str | None] = mapped_column("responsavel_observacao", Text, nullable=True)
-    residential_street: Mapped[str] = mapped_column("residencial_logradouro", String(200))
-    residential_number: Mapped[str] = mapped_column("residencial_numero", String(20))
-    residential_complement: Mapped[str | None] = mapped_column("residencial_complemento", String(100), nullable=True)
-    residential_district: Mapped[str] = mapped_column("residencial_bairro", String(100))
-    residential_city: Mapped[str] = mapped_column("residencial_municipio", String(100))
-    residential_zip_code: Mapped[str] = mapped_column("residencial_cep", String(9))
-    residential_phone: Mapped[str] = mapped_column("residencial_telefone", String(20))
-    residential_contact_notes: Mapped[str | None] = mapped_column("residencial_contato_familia", Text, nullable=True)
-    school_grade: Mapped[str] = mapped_column("escolaridade_serie", String(40))
-    school_education_level: Mapped[str] = mapped_column("escolaridade_ensino", String(20))
-    school_is_currently_enrolled: Mapped[str] = mapped_column("escolaridade_esta_cursando", String(3))
-    school_name: Mapped[str] = mapped_column("escolaridade_nome_escola", String(200))
-    school_type: Mapped[str] = mapped_column("escolaridade_tipo", String(20))
-    school_is_scholarship_holder: Mapped[str] = mapped_column("escolaridade_e_bolsista", String(3))
-    school_scholarship_percentage: Mapped[int | None] = mapped_column("escolaridade_percentual_bolsa", Integer, nullable=True)
-    school_schedule: Mapped[str] = mapped_column("escolaridade_horario", String(20))
-    school_notes: Mapped[str | None] = mapped_column("escolaridade_observacao", Text, nullable=True)
     status: Mapped[UserStatus] = mapped_column(
         "status",
         Enum(
@@ -175,13 +142,275 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    movements = relationship("UserMovement", back_populates="user")
+    responsible = relationship(
+        "UserResponsible",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    residential = relationship(
+        "UserResidential",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    schooling = relationship(
+        "UserSchooling",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+    @property
+    def responsible_name(self) -> str | None:
+        return self.responsible.name if self.responsible else None
+
+    @property
+    def responsible_age(self) -> int | None:
+        return self.responsible.age if self.responsible else None
+
+    @property
+    def responsible_gender(self) -> str | None:
+        return self.responsible.gender if self.responsible else None
+
+    @property
+    def responsible_birth_place(self) -> str | None:
+        return self.responsible.birth_place if self.responsible else None
+
+    @property
+    def responsible_marital_status(self) -> str | None:
+        return self.responsible.marital_status if self.responsible else None
+
+    @property
+    def responsible_education(self) -> str | None:
+        return self.responsible.education if self.responsible else None
+
+    @property
+    def responsible_rg(self) -> str | None:
+        return self.responsible.rg if self.responsible else None
+
+    @property
+    def responsible_issuing_agency_uf(self) -> str | None:
+        return self.responsible.issuing_agency_uf if self.responsible else None
+
+    @property
+    def responsible_cpf(self) -> str | None:
+        return self.responsible.cpf if self.responsible else None
+
+    @property
+    def responsible_workplace(self) -> str | None:
+        return self.responsible.workplace if self.responsible else None
+
+    @property
+    def responsible_income(self) -> float | None:
+        return self.responsible.income if self.responsible else None
+
+    @property
+    def responsible_state(self) -> str | None:
+        return self.responsible.state if self.responsible else None
+
+    @property
+    def responsible_city(self) -> str | None:
+        return self.responsible.city if self.responsible else None
+
+    @property
+    def responsible_phone(self) -> str | None:
+        return self.responsible.phone if self.responsible else None
+
+    @property
+    def responsible_schedule(self) -> str | None:
+        return self.responsible.schedule if self.responsible else None
+
+    @property
+    def responsible_notes(self) -> str | None:
+        return self.responsible.notes if self.responsible else None
+
+    @property
+    def residential_street(self) -> str | None:
+        return self.residential.street if self.residential else None
+
+    @property
+    def residential_number(self) -> str | None:
+        return self.residential.number if self.residential else None
+
+    @property
+    def residential_complement(self) -> str | None:
+        return self.residential.complement if self.residential else None
+
+    @property
+    def residential_district(self) -> str | None:
+        return self.residential.district if self.residential else None
+
+    @property
+    def residential_city(self) -> str | None:
+        return self.residential.city if self.residential else None
+
+    @property
+    def residential_zip_code(self) -> str | None:
+        return self.residential.zip_code if self.residential else None
+
+    @property
+    def residential_phone(self) -> str | None:
+        return self.residential.phone if self.residential else None
+
+    @property
+    def residential_contact_notes(self) -> str | None:
+        return self.residential.contact_notes if self.residential else None
+
+    @property
+    def school_grade(self) -> str | None:
+        return self.schooling.grade if self.schooling else None
+
+    @property
+    def school_education_level(self) -> str | None:
+        return self.schooling.education_level if self.schooling else None
+
+    @property
+    def school_is_currently_enrolled(self) -> str | None:
+        return self.schooling.is_currently_enrolled if self.schooling else None
+
+    @property
+    def school_name(self) -> str | None:
+        return self.schooling.name if self.schooling else None
+
+    @property
+    def school_type(self) -> str | None:
+        return self.schooling.type if self.schooling else None
+
+    @property
+    def school_is_scholarship_holder(self) -> str | None:
+        return self.schooling.is_scholarship_holder if self.schooling else None
+
+    @property
+    def school_scholarship_percentage(self) -> int | None:
+        return self.schooling.scholarship_percentage if self.schooling else None
+
+    @property
+    def school_schedule(self) -> str | None:
+        return self.schooling.schedule if self.schooling else None
+
+    @property
+    def school_notes(self) -> str | None:
+        return self.schooling.notes if self.schooling else None
+
+
+class UserResponsible(Base):
+    __tablename__ = "usuario_responsavel"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"), unique=True)
+    name: Mapped[str] = mapped_column("nome", String(200))
+    age: Mapped[int] = mapped_column("idade", Integer)
+    gender: Mapped[str] = mapped_column("sexo", String(20))
+    birth_place: Mapped[str] = mapped_column("naturalidade", String(150))
+    marital_status: Mapped[str] = mapped_column("estado_civil", String(20))
+    education: Mapped[str] = mapped_column("escolaridade", String(120))
+    rg: Mapped[str] = mapped_column("rg", String(20))
+    issuing_agency_uf: Mapped[str] = mapped_column("orgao_emissor_uf", String(40))
+    cpf: Mapped[str] = mapped_column("cpf", String(14))
+    workplace: Mapped[str | None] = mapped_column("local_trabalho", String(180), nullable=True)
+    income: Mapped[float | None] = mapped_column("renda_bruta", Numeric(12, 2), nullable=True)
+    state: Mapped[str | None] = mapped_column("estado", String(2), nullable=True)
+    city: Mapped[str | None] = mapped_column("municipio", String(100), nullable=True)
+    phone: Mapped[str | None] = mapped_column("telefone", String(20), nullable=True)
+    schedule: Mapped[str | None] = mapped_column("horario", String(20), nullable=True)
+    notes: Mapped[str | None] = mapped_column("observacao", Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "atualizado_em",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+
+    user = relationship("User", back_populates="responsible")
+
+
+class UserResidential(Base):
+    __tablename__ = "usuario_residencial"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"), unique=True)
+    street: Mapped[str] = mapped_column("logradouro", String(200))
+    number: Mapped[str] = mapped_column("numero", String(20))
+    complement: Mapped[str | None] = mapped_column("complemento", String(100), nullable=True)
+    district: Mapped[str] = mapped_column("bairro", String(100))
+    city: Mapped[str] = mapped_column("municipio", String(100))
+    zip_code: Mapped[str] = mapped_column("cep", String(9))
+    phone: Mapped[str] = mapped_column("telefone", String(20))
+    contact_notes: Mapped[str | None] = mapped_column("contato_familia", Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "atualizado_em",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+
+    user = relationship("User", back_populates="residential")
+
+
+class UserSchooling(Base):
+    __tablename__ = "usuario_escolaridade"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"), unique=True)
+    grade: Mapped[str] = mapped_column("serie", String(40))
+    education_level: Mapped[str] = mapped_column("ensino", String(20))
+    is_currently_enrolled: Mapped[str] = mapped_column("esta_cursando", String(3))
+    name: Mapped[str] = mapped_column("nome_escola", String(200))
+    type: Mapped[str] = mapped_column("tipo", String(20))
+    is_scholarship_holder: Mapped[str] = mapped_column("e_bolsista", String(3))
+    scholarship_percentage: Mapped[int | None] = mapped_column("percentual_bolsa", Integer, nullable=True)
+    schedule: Mapped[str] = mapped_column("horario", String(20))
+    notes: Mapped[str | None] = mapped_column("observacao", Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "atualizado_em",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+
+    user = relationship("User", back_populates="schooling")
+
+
+class UserMovement(Base):
+    __tablename__ = "usuario_movimentacao"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column("user_id", ForeignKey("usuario.id"), index=True)
+    movement_type: Mapped[UserMovementType] = mapped_column(
+        "movement_type",
+        Enum(
+            UserMovementType,
+            name="tipo_movimentacao_usuario",
+            values_callable=lambda enum_cls: [item.value for item in enum_cls],
+        ),
+        index=True,
+    )
+    movement_date: Mapped[date] = mapped_column("movement_date", Date, index=True)
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+
+    user = relationship("User", back_populates="movements")
 
 
 class ComposicaoFamiliar(Base):
-    __tablename__ = "composicoes_familiares"
+    __tablename__ = "usuario_composicao_familiar"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id", ondelete="CASCADE"))
+    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"))
     nome: Mapped[str] = mapped_column("nome", String(200))
     parentesco: Mapped[str] = mapped_column("parentesco", String(80))
     sexo: Mapped[str] = mapped_column("sexo", String(20))
@@ -202,10 +431,10 @@ class ComposicaoFamiliar(Base):
 
 
 class SituacaoHabitacional(Base):
-    __tablename__ = "situacoes_habitacionais"
+    __tablename__ = "usuario_situacao_habitacional"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id", ondelete="CASCADE"), unique=True)
+    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"), unique=True)
     tipo_habitacao: Mapped[str | None] = mapped_column("tipo_habitacao", String(40), nullable=True)
     tipo_habitacao_outro: Mapped[str | None] = mapped_column("tipo_habitacao_outro", String(120), nullable=True)
     ocupacao: Mapped[str | None] = mapped_column("ocupacao", String(60), nullable=True)
@@ -227,10 +456,10 @@ class SituacaoHabitacional(Base):
 
 
 class CondicaoSaude(Base):
-    __tablename__ = "condicoes_saude"
+    __tablename__ = "usuario_condicao_saude"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id", ondelete="CASCADE"), unique=True)
+    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"), unique=True)
     assistencia_medica: Mapped[str | None] = mapped_column("assistencia_medica", Text, nullable=True)
     problema_saude: Mapped[str | None] = mapped_column("problema_saude", Text, nullable=True)
     alergia: Mapped[str | None] = mapped_column("alergia", Text, nullable=True)
@@ -253,10 +482,10 @@ class CondicaoSaude(Base):
 
 
 class SituacaoFamiliar(Base):
-    __tablename__ = "situacao_familiar"
+    __tablename__ = "usuario_situacao_familiar"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id", ondelete="CASCADE"), unique=True)
+    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"), unique=True)
     informacoes_situacao_familiar: Mapped[str | None] = mapped_column("informacoes_situacao_familiar", Text, nullable=True)
     expectativas_participacao_projeto: Mapped[str | None] = mapped_column("expectativas_participacao_projeto", Text, nullable=True)
     criado_em: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
@@ -272,10 +501,10 @@ class SituacaoFamiliar(Base):
 
 
 class ParecerUsuario(Base):
-    __tablename__ = "parecer"
+    __tablename__ = "usuario_parecer"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id", ondelete="CASCADE"), unique=True)
+    usuario_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"), unique=True)
     parecer: Mapped[str | None] = mapped_column("parecer", Text, nullable=True)
     criado_em: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
     atualizado_em: Mapped[datetime] = mapped_column(
@@ -290,11 +519,11 @@ class ParecerUsuario(Base):
 
 
 class Activity(Base):
-    __tablename__ = "atividades"
+    __tablename__ = "atividade"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    unit_id: Mapped[int | None] = mapped_column("unidade_social_id", ForeignKey("unidades_sociais.id"), nullable=True)
-    group_id: Mapped[int | None] = mapped_column("grupo_id", ForeignKey("grupos.id"), nullable=True)
+    unit_id: Mapped[int | None] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"), nullable=True)
+    group_id: Mapped[int | None] = mapped_column("grupo_id", ForeignKey("grupo.id"), nullable=True)
     name: Mapped[str] = mapped_column("nome", String(255))
     description: Mapped[str | None] = mapped_column("descricao", Text, nullable=True)
     category: Mapped[str] = mapped_column("categoria", String(80))
@@ -336,7 +565,7 @@ class Activity(Base):
 
 
 class Group(Base):
-    __tablename__ = "grupos"
+    __tablename__ = "grupo"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
     name: Mapped[str] = mapped_column("nome", String(255), unique=True)
@@ -364,12 +593,12 @@ class Group(Base):
 
 
 class UserGroup(Base):
-    __tablename__ = "usuarios_grupos"
+    __tablename__ = "usuario_grupo"
     __table_args__ = (UniqueConstraint("usuario_id", "grupo_id", name="uq_usuario_grupo"),)
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id", ondelete="CASCADE"))
-    group_id: Mapped[int] = mapped_column("grupo_id", ForeignKey("grupos.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"))
+    group_id: Mapped[int] = mapped_column("grupo_id", ForeignKey("grupo.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         "atualizado_em",
@@ -384,25 +613,25 @@ class UserGroup(Base):
 
 
 class ActivityGroup(Base):
-    __tablename__ = "atividades_grupos"
+    __tablename__ = "atividade_grupo"
     __table_args__ = (UniqueConstraint("atividade_id", "grupo_id", name="uq_atividade_grupo"),)
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividades.id", ondelete="CASCADE"))
-    group_id: Mapped[int] = mapped_column("grupo_id", ForeignKey("grupos.id", ondelete="CASCADE"))
+    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividade.id", ondelete="CASCADE"))
+    group_id: Mapped[int] = mapped_column("grupo_id", ForeignKey("grupo.id", ondelete="CASCADE"))
 
     activity = relationship("Activity", back_populates="activity_groups")
     group = relationship("Group", back_populates="activity_groups")
 
 
 class ActivityWeekday(Base):
-    __tablename__ = "atividades_dias_semana"
+    __tablename__ = "atividade_dia_semana"
     __table_args__ = (
         UniqueConstraint("atividade_id", "dia_semana", name="uq_atividade_dia_semana"),
     )
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividades.id", ondelete="CASCADE"))
+    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividade.id", ondelete="CASCADE"))
     weekday: Mapped[str] = mapped_column("dia_semana", String(20))
     created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -417,34 +646,34 @@ class ActivityWeekday(Base):
 
 
 class Enrollment(Base):
-    __tablename__ = "inscricoes"
+    __tablename__ = "inscricao"
     __table_args__ = (UniqueConstraint("usuario_id", "atividade_id", name="uq_usuario_atividade"),)
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id"))
-    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividades.id"))
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id"))
+    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividade.id"))
 
 
 class Attendance(Base):
-    __tablename__ = "frequencias"
+    __tablename__ = "frequencia"
     __table_args__ = (UniqueConstraint("usuario_id", "atividade_id", "data_frequencia", name="uq_frequencia"),)
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id"))
-    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividades.id"))
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id"))
+    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividade.id"))
     attendance_date: Mapped[date] = mapped_column("data_frequencia", Date)
     status: Mapped[AttendanceStatus] = mapped_column("status", Enum(AttendanceStatus))
 
 
 class GroupAttendance(Base):
-    __tablename__ = "frequencias_grupos"
+    __tablename__ = "frequencia_grupo"
     __table_args__ = (
         UniqueConstraint("usuario_id", "grupo_id", "turno", "data_frequencia", name="uq_frequencia_grupo"),
     )
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id", ondelete="CASCADE"))
-    group_id: Mapped[int] = mapped_column("grupo_id", ForeignKey("grupos.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"))
+    group_id: Mapped[int] = mapped_column("grupo_id", ForeignKey("grupo.id", ondelete="CASCADE"))
     shift: Mapped[str] = mapped_column("turno", String(20))
     attendance_date: Mapped[date] = mapped_column("data_frequencia", Date)
     present: Mapped[bool] = mapped_column("presente", Boolean, default=False)
@@ -459,10 +688,10 @@ class GroupAttendance(Base):
 
 
 class AbsenceJustification(Base):
-    __tablename__ = "justificativas_falta"
+    __tablename__ = "justificativa_falta"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    attendance_id: Mapped[int] = mapped_column("frequencia_id", ForeignKey("frequencias.id"), unique=True)
+    attendance_id: Mapped[int] = mapped_column("frequencia_id", ForeignKey("frequencia.id"), unique=True)
     reason: Mapped[str] = mapped_column("motivo", Text)
     author_name: Mapped[str] = mapped_column("autor_nome", String(120))
     justification_date: Mapped[date] = mapped_column("data_justificativa", Date)
@@ -475,30 +704,30 @@ class AbsenceJustification(Base):
 
 
 class Report(Base):
-    __tablename__ = "relatorios"
+    __tablename__ = "relatorio"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidades_sociais.id"))
+    unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
     title: Mapped[str] = mapped_column("titulo", String(200))
     status: Mapped[ReportStatus] = mapped_column("status", Enum(ReportStatus), default=ReportStatus.DRAFT)
     created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow)
 
 
 class ReportVersion(Base):
-    __tablename__ = "versoes_relatorio"
+    __tablename__ = "versao_relatorio"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    report_id: Mapped[int] = mapped_column("relatorio_id", ForeignKey("relatorios.id"))
+    report_id: Mapped[int] = mapped_column("relatorio_id", ForeignKey("relatorio.id"))
     version_number: Mapped[int] = mapped_column("numero_versao", Integer)
     content: Mapped[dict] = mapped_column("conteudo", JSON)
     created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow)
 
 
 class ReportApproval(Base):
-    __tablename__ = "aprovacoes_relatorio"
+    __tablename__ = "aprovacao_relatorio"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    report_id: Mapped[int] = mapped_column("relatorio_id", ForeignKey("relatorios.id"))
+    report_id: Mapped[int] = mapped_column("relatorio_id", ForeignKey("relatorio.id"))
     decision: Mapped[ReportStatus] = mapped_column("decisao", Enum(ReportStatus))
     reviewer_name: Mapped[str] = mapped_column("revisor_nome", String(120))
     reason: Mapped[str | None] = mapped_column("motivo", Text, nullable=True)
@@ -506,10 +735,10 @@ class ReportApproval(Base):
 
 
 class Participant(Base):
-    __tablename__ = "participantes"
+    __tablename__ = "participante"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidades_sociais.id"))
+    unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
     full_name: Mapped[str] = mapped_column("nome_completo", String(180))
     birth_date: Mapped[date] = mapped_column("data_nascimento", Date)
     nis: Mapped[str | None] = mapped_column("nis", String(30), nullable=True)
@@ -518,20 +747,20 @@ class Participant(Base):
 
 
 class ParticipantVersion(Base):
-    __tablename__ = "versoes_participante"
+    __tablename__ = "versao_participante"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    participant_id: Mapped[int] = mapped_column("participante_id", ForeignKey("participantes.id"))
+    participant_id: Mapped[int] = mapped_column("participante_id", ForeignKey("participante.id"))
     version_number: Mapped[int] = mapped_column("numero_versao", Integer)
     payload: Mapped[dict] = mapped_column("payload", JSON)
     created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow)
 
 
 class ParticipantAttachment(Base):
-    __tablename__ = "anexos_participante"
+    __tablename__ = "anexo_participante"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    participant_id: Mapped[int] = mapped_column("participante_id", ForeignKey("participantes.id"))
+    participant_id: Mapped[int] = mapped_column("participante_id", ForeignKey("participante.id"))
     file_name: Mapped[str] = mapped_column("nome_arquivo", String(180))
     url: Mapped[str] = mapped_column("url", String(255))
     uploaded_at: Mapped[datetime] = mapped_column("enviado_em", DateTime, default=datetime.utcnow)
@@ -563,22 +792,22 @@ class ProfilePermission(Base):
 
 
 class UserSocialUnit(Base):
-    __tablename__ = "usuarios_unidades_sociais"
+    __tablename__ = "usuario_unidade_social"
     __table_args__ = (UniqueConstraint("usuario_id", "unidade_social_id", name="uq_usuario_unidade_social"),)
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuarios.id"))
-    social_unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidades_sociais.id"))
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id"))
+    social_unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
 
 
 class Collaborator(Base):
-    __tablename__ = "colaboradores"
+    __tablename__ = "colaborador"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
     name: Mapped[str] = mapped_column("nome", String(200))
     cpf: Mapped[str] = mapped_column("cpf", String(14), unique=True)
     role: Mapped[str] = mapped_column("funcao", String(80))
-    social_unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidades_sociais.id"))
+    social_unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
     email: Mapped[str] = mapped_column("email", String(180), unique=True)
     password_hash: Mapped[str] = mapped_column("hash_senha", String(255))
     is_active: Mapped[bool] = mapped_column("ativo", Boolean, default=True)
