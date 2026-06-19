@@ -717,6 +717,7 @@ def validate_activity_weekdays(value: list[str]) -> list[str]:
 
 
 class GroupCreate(BaseSchema):
+    unit_id: int | None = None
     name: str = Field(min_length=1, max_length=255)
     shift: str = Field(min_length=1, max_length=50)
     initial_age: int

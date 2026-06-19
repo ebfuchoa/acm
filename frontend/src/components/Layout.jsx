@@ -34,11 +34,11 @@ export function Layout({ children }) {
           <NavLink to="/" className="brand-logo-link" aria-label="Ir para a tela inicial">
             <img className="brand-logo" src="/logo-acm-nos-somos.jpg" alt="ACM YMCA" />
           </NavLink>
-          <span className="brand-product">{brandName}</span>
         </div>
 
         <div className="topbar-actions">
           <div className="user-card">
+            <strong className="user-unit">{brandName}</strong>
             <strong>{auth?.user_name || 'Usuário'}</strong>
             <span>{auth?.profile || 'Sem perfil'}</span>
           </div>

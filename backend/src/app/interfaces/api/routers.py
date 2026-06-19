@@ -48,6 +48,23 @@ def _can_manage_atendimentos(ctx: AuthContext) -> bool:
     return profile in {"coordenador", "coordenadora", "tecnico"}
 
 
+def _unit_scope_or_none(ctx: AuthContext) -> int | None:
+    if ctx.social_unit_id is not None:
+        return int(ctx.social_unit_id)
+    if ctx.is_admin:
+        return None
+    if ctx.social_unit_id is None:
+        raise HTTPException(status_code=403, detail='Unidade Social obrigatoria para acessar estes dados.')
+
+
+def _enforce_effective_unit_scope(ctx: AuthContext, target_unit_id: int | None) -> None:
+    unit_id = _unit_scope_or_none(ctx)
+    if unit_id is None:
+        return
+    if target_unit_id is None or int(target_unit_id) != int(unit_id):
+        raise HTTPException(status_code=403, detail='Acesso nao autorizado para esta Unidade Social.')
+
+
 def _fmt_date_br(value: date | None) -> str:
     if value is None:
         return "-"
@@ -365,7 +382,7 @@ def list_users(
     if normalized_status not in {"ativo", "inativo"}:
         raise HTTPException(status_code=400, detail="Status invalido. Use ativo ou inativo.")
     rows = CrudService(db).list_users(status_filter=normalized_status)
-    if ctx.is_admin:
+    if ctx.is_admin and ctx.social_unit_id is None:
         return rows
     return [row for row in rows if row.unit_id == ctx.social_unit_id]
 
@@ -663,7 +680,7 @@ def create_activity(payload: schemas.ActivityCreate, db: Session = Depends(get_d
 @router.get('/atividades', response_model=list[schemas.ActivityRead])
 def list_activities(db: Session = Depends(get_db), ctx: AuthContext = Depends(require_permission('activities.read'))):
     rows = CrudService(db).list_activities()
-    if ctx.is_admin:
+    if ctx.is_admin and ctx.social_unit_id is None:
         return rows
     return [row for row in rows if row.unit_id == ctx.social_unit_id]
 
@@ -696,18 +713,26 @@ def delete_activity(activity_id: int, db: Session = Depends(get_db), ctx: AuthCo
     CrudService(db).delete_activity(activity_id)
 
 @router.post('/grupos', response_model=schemas.GroupRead)
-def create_group(payload: schemas.GroupCreate, db: Session = Depends(get_db), _: AuthContext = Depends(require_permission('groups.write'))):
+def create_group(payload: schemas.GroupCreate, db: Session = Depends(get_db), ctx: AuthContext = Depends(require_permission('groups.write'))):
+    if payload.unit_id is None:
+        unit_id = _unit_scope_or_none(ctx)
+        if unit_id is None:
+            raise HTTPException(status_code=400, detail='Unidade social obrigatoria para grupo.')
+        payload.unit_id = unit_id
+    _enforce_effective_unit_scope(ctx, payload.unit_id)
     return CrudService(db).create_group(payload)
 
 
 @router.get('/grupos', response_model=list[schemas.GroupRead])
-def list_groups(db: Session = Depends(get_db), _: AuthContext = Depends(require_permission('groups.read'))):
-    return CrudService(db).list_groups()
+def list_groups(db: Session = Depends(get_db), ctx: AuthContext = Depends(require_permission('groups.read'))):
+    return CrudService(db).list_groups(unit_id=_unit_scope_or_none(ctx))
 
 
 @router.get('/grupos/{group_id}', response_model=schemas.GroupRead)
-def get_group(group_id: int, db: Session = Depends(get_db), _: AuthContext = Depends(require_permission('groups.read'))):
-    return CrudService(db).get_group(group_id)
+def get_group(group_id: int, db: Session = Depends(get_db), ctx: AuthContext = Depends(require_permission('groups.read'))):
+    row = CrudService(db).get_group(group_id)
+    _enforce_effective_unit_scope(ctx, row.unit_id)
+    return row
 
 
 @router.put('/grupos/{group_id}', response_model=schemas.GroupRead)
@@ -715,13 +740,17 @@ def update_group(
     group_id: int,
     payload: schemas.GroupUpdate,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(require_permission('groups.write')),
+    ctx: AuthContext = Depends(require_permission('groups.write')),
 ):
+    row = CrudService(db).get_group(group_id)
+    _enforce_effective_unit_scope(ctx, row.unit_id)
     return CrudService(db).update_group(group_id, payload)
 
 
 @router.delete('/grupos/{group_id}', status_code=204)
-def delete_group(group_id: int, db: Session = Depends(get_db), _: AuthContext = Depends(require_permission('groups.delete'))):
+def delete_group(group_id: int, db: Session = Depends(get_db), ctx: AuthContext = Depends(require_permission('groups.delete'))):
+    row = CrudService(db).get_group(group_id)
+    _enforce_effective_unit_scope(ctx, row.unit_id)
     CrudService(db).delete_group(group_id)
 
 
@@ -793,17 +822,10 @@ def list_frequency_groups(
 ):
     shift = _normalize_shift(turno)
     query = select(models.Group).where(models.Group.shift == shift).order_by(models.Group.name.asc())
+    if ctx.social_unit_id is not None:
+        query = query.where(models.Group.unit_id == ctx.social_unit_id)
     groups = list(db.scalars(query).all())
-    if ctx.is_admin:
-        return [{"id": g.id, "nome": g.name, "turno": g.shift, "faixa_etaria": f"{g.initial_age} a {g.final_age} anos"} for g in groups]
-
-    unit_user_ids = set(db.scalars(select(models.User.id).where(models.User.unit_id == ctx.social_unit_id)).all())
-    scoped = []
-    for group in groups:
-        linked_user_ids = {item.user_id for item in (group.user_groups or [])}
-        if linked_user_ids.intersection(unit_user_ids):
-            scoped.append({"id": group.id, "nome": group.name, "turno": group.shift, "faixa_etaria": f"{group.initial_age} a {group.final_age} anos"})
-    return scoped
+    return [{"id": g.id, "nome": g.name, "turno": g.shift, "faixa_etaria": f"{g.initial_age} a {g.final_age} anos"} for g in groups]
 
 
 @router.get('/frequencias/usuarios', response_model=list[schemas.FrequenciaUsuarioRead])
@@ -817,6 +839,7 @@ def list_frequency_users(
     group = db.get(models.Group, grupo_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+    _enforce_effective_unit_scope(ctx, group.unit_id)
     if group.shift != shift:
         raise HTTPException(status_code=400, detail="Grupo nao pertence ao turno informado.")
 
@@ -833,7 +856,7 @@ def list_frequency_users(
         .order_by(models.User.name.asc())
     )
     users = list(db.scalars(query).all())
-    if not ctx.is_admin:
+    if ctx.social_unit_id is not None:
         users = [u for u in users if u.unit_id == ctx.social_unit_id]
     return [
         {
@@ -1009,18 +1032,20 @@ def participant_history(participant_id: int, db: Session = Depends(get_db)):
 @router.get('/classificacao-grupos', response_model=list[schemas.GroupClassificationItem])
 def list_group_classification(
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(get_current_auth_context),
+    ctx: AuthContext = Depends(get_current_auth_context),
 ):
-    return GroupClassificationService(db).list_classification()
+    unit_id = _unit_scope_or_none(ctx)
+    return GroupClassificationService(db).list_classification(unit_id=unit_id)
 
 
 @router.get('/classificacao-grupos/{group_id}', response_model=schemas.GroupClassificationItem)
 def get_group_classification(
     group_id: int,
     db: Session = Depends(get_db),
-    _: AuthContext = Depends(get_current_auth_context),
+    ctx: AuthContext = Depends(get_current_auth_context),
 ):
-    rows = GroupClassificationService(db).list_classification(group_id=group_id)
+    unit_id = _unit_scope_or_none(ctx)
+    rows = GroupClassificationService(db).list_classification(group_id=group_id, unit_id=unit_id)
     if not rows:
         raise HTTPException(status_code=404, detail='Grupo nao encontrado.')
     return rows[0]
@@ -1034,7 +1059,8 @@ def link_user_to_group(
 ):
     if not _can_manage_group_classification(ctx):
         raise HTTPException(status_code=403, detail='Acesso negado.')
-    GroupClassificationService(db).link_user(payload)
+    unit_id = _unit_scope_or_none(ctx)
+    GroupClassificationService(db).link_user(payload, unit_id=unit_id)
 
 
 @router.delete('/classificacao-grupos/desvincular-usuario', status_code=204)
@@ -1045,5 +1071,6 @@ def unlink_user_from_group(
 ):
     if not _can_manage_group_classification(ctx):
         raise HTTPException(status_code=403, detail='Acesso negado.')
-    GroupClassificationService(db).unlink_user(payload)
+    unit_id = _unit_scope_or_none(ctx)
+    GroupClassificationService(db).unlink_user(payload, unit_id=unit_id)
 

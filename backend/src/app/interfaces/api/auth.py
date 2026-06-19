@@ -76,11 +76,12 @@ def get_current_auth_context(
         token_permissions = []
     db_permissions = _permissions_from_db(db, collaborator.role)
     permissions = set(db_permissions).union({str(p) for p in token_permissions if p})
+    scoped_social_unit_id = payload.get('social_unit_id') if collaborator.is_admin else collaborator.social_unit_id
     return AuthContext(
         user_id=collaborator.id,
         profile=collaborator.role,
         is_admin=bool(collaborator.is_admin),
-        social_unit_id=payload.get('social_unit_id'),
+        social_unit_id=scoped_social_unit_id,
         permissions=permissions,
     )
 

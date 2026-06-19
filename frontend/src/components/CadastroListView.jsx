@@ -38,8 +38,8 @@ export function CadastroListView({
       </div>
 
       <div className="card">
-        <div style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 260 }}>
+        <div className="search-toolbar">
+          <div className="search-field">
             <label>Busca</label>
             <input
               value={searchTerm || ''}

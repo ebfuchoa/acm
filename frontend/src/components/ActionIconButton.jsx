@@ -2,7 +2,7 @@ export function ActionIconButton({ action, label, onClick }) {
   return (
     <button
       type="button"
-      className="btn btn-ghost"
+      className={`btn btn-ghost action-icon action-${action}`}
       title={label}
       aria-label={label}
       onClick={onClick}

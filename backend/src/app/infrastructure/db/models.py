@@ -568,7 +568,8 @@ class Group(Base):
     __tablename__ = "grupo"
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    name: Mapped[str] = mapped_column("nome", String(255), unique=True)
+    unit_id: Mapped[int | None] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"), nullable=True)
+    name: Mapped[str] = mapped_column("nome", String(255))
     shift: Mapped[str] = mapped_column("turno", String(50))
     initial_age: Mapped[int] = mapped_column("idade_inicial", Integer)
     final_age: Mapped[int] = mapped_column("idade_final", Integer)

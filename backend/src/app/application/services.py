@@ -490,11 +490,12 @@ class CrudService:
         payload_data = payload.model_dump()
         weekdays = payload_data.pop("dias_semana", [])
         activity_name = payload_data["name"].strip()
-        missing_groups = [
-            group_id for group_id in payload_data["group_ids"] if self.db.get(models.Group, group_id) is None
-        ]
+        groups = [self.db.get(models.Group, group_id) for group_id in payload_data["group_ids"]]
+        missing_groups = [group_id for group_id, group in zip(payload_data["group_ids"], groups) if group is None]
         if missing_groups:
             raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+        if any(group.unit_id != payload_data["unit_id"] for group in groups if group is not None):
+            raise HTTPException(status_code=400, detail="Grupo nao pertence a Unidade Social da atividade.")
         duplicate = self.db.scalar(
             select(models.Activity).where(func.lower(models.Activity.name) == activity_name.lower())
         )
@@ -529,9 +530,12 @@ class CrudService:
     def update_activity(self, activity_id: int, payload: schemas.ActivityUpdate) -> models.Activity:
         activity = self.get_activity(activity_id)
         activity_name = payload.name.strip()
-        missing_groups = [group_id for group_id in payload.group_ids if self.db.get(models.Group, group_id) is None]
+        groups = [self.db.get(models.Group, group_id) for group_id in payload.group_ids]
+        missing_groups = [group_id for group_id, group in zip(payload.group_ids, groups) if group is None]
         if missing_groups:
             raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+        if any(group.unit_id != activity.unit_id for group in groups if group is not None):
+            raise HTTPException(status_code=400, detail="Grupo nao pertence a Unidade Social da atividade.")
         duplicate = self.db.scalar(
             select(models.Activity).where(
                 and_(
@@ -576,11 +580,17 @@ class CrudService:
     def create_group(self, payload: schemas.GroupCreate) -> models.Group:
         group_name = payload.name.strip()
         duplicate = self.db.scalar(
-            select(models.Group).where(func.lower(models.Group.name) == group_name.lower())
+            select(models.Group).where(
+                and_(
+                    models.Group.unit_id == payload.unit_id,
+                    func.lower(models.Group.name) == group_name.lower(),
+                )
+            )
         )
         if duplicate is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ja existe um grupo cadastrado com este nome.")
         item = models.Group(
+            unit_id=payload.unit_id,
             name=group_name,
             shift=payload.shift,
             initial_age=payload.initial_age,
@@ -591,8 +601,11 @@ class CrudService:
         self.db.refresh(item)
         return item
 
-    def list_groups(self) -> list[models.Group]:
-        return list(self.db.scalars(select(models.Group).order_by(models.Group.name.asc())).all())
+    def list_groups(self, unit_id: int | None = None) -> list[models.Group]:
+        query = select(models.Group).order_by(models.Group.name.asc())
+        if unit_id is not None:
+            query = query.where(models.Group.unit_id == unit_id)
+        return list(self.db.scalars(query).all())
 
     def get_group(self, group_id: int) -> models.Group:
         item = self.db.get(models.Group, group_id)
@@ -607,6 +620,7 @@ class CrudService:
             select(models.Group).where(
                 and_(
                     models.Group.id != group_id,
+                    models.Group.unit_id == item.unit_id,
                     func.lower(models.Group.name) == group_name.lower(),
                 )
             )
@@ -888,12 +902,21 @@ class GroupClassificationService:
         rows = self.db.scalars(select(models.UserGroup)).all()
         return {(row.user_id, row.group_id) for row in rows}
 
-    def list_classification(self, group_id: int | None = None) -> list[schemas.GroupClassificationItem]:
+    def list_classification(
+        self,
+        group_id: int | None = None,
+        unit_id: int | None = None,
+    ) -> list[schemas.GroupClassificationItem]:
         groups_query = select(models.Group).order_by(models.Group.shift.asc(), models.Group.name.asc())
         if group_id is not None:
             groups_query = groups_query.where(models.Group.id == group_id)
+        if unit_id is not None:
+            groups_query = groups_query.where(models.Group.unit_id == unit_id)
         groups = list(self.db.scalars(groups_query).all())
-        users = list(self.db.scalars(select(models.User)).all())
+        users_query = select(models.User)
+        if unit_id is not None:
+            users_query = users_query.where(models.User.unit_id == unit_id)
+        users = list(self.db.scalars(users_query).all())
         linked = self._linked_user_group_ids()
 
         response: list[schemas.GroupClassificationItem] = []
@@ -925,13 +948,17 @@ class GroupClassificationService:
             )
         return response
 
-    def link_user(self, payload: schemas.GroupClassificationLinkPayload) -> None:
+    def link_user(self, payload: schemas.GroupClassificationLinkPayload, unit_id: int | None = None) -> None:
         user = self.db.get(models.User, payload.user_id)
         group = self.db.get(models.Group, payload.group_id)
         if user is None:
             raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
         if group is None:
             raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+        if unit_id is not None and group.unit_id != unit_id:
+            raise HTTPException(status_code=403, detail="Grupo nao pertence a Unidade Social logada.")
+        if unit_id is not None and user.unit_id != unit_id:
+            raise HTTPException(status_code=403, detail="Usuario nao pertence a Unidade Social logada.")
         if not self._is_user_active(user):
             raise HTTPException(status_code=400, detail="Usuario inativo nao pode ser vinculado.")
         if self._normalize_shift(user.shift) != self._normalize_shift(group.shift):
@@ -948,7 +975,17 @@ class GroupClassificationService:
         self.db.add(models.UserGroup(user_id=payload.user_id, group_id=payload.group_id))
         self.db.commit()
 
-    def unlink_user(self, payload: schemas.GroupClassificationLinkPayload) -> None:
+    def unlink_user(self, payload: schemas.GroupClassificationLinkPayload, unit_id: int | None = None) -> None:
+        user = self.db.get(models.User, payload.user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
+        if unit_id is not None and user.unit_id != unit_id:
+            raise HTTPException(status_code=403, detail="Usuario nao pertence a Unidade Social logada.")
+        group = self.db.get(models.Group, payload.group_id)
+        if group is None:
+            raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+        if unit_id is not None and group.unit_id != unit_id:
+            raise HTTPException(status_code=403, detail="Grupo nao pertence a Unidade Social logada.")
         row = self.db.scalar(
             select(models.UserGroup).where(
                 and_(models.UserGroup.user_id == payload.user_id, models.UserGroup.group_id == payload.group_id)

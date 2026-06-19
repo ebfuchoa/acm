@@ -25,8 +25,6 @@ export function DashboardPage() {
 
   return (
     <section className="dashboard-hero" aria-labelledby="dashboard-title">
-      <div className="dashboard-watermark" aria-hidden="true">{unitTitle}</div>
-
       <div className="dashboard-hero-content">
         <div className="dashboard-kicker">
           <span>Painel operacional</span>
