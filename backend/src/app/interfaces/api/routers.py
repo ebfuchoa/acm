@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from datetime import date, timedelta
+import calendar
+from datetime import date, datetime, timedelta
 from io import BytesIO
 import re
 import unicodedata
@@ -9,7 +10,7 @@ from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.application import schemas
@@ -20,6 +21,7 @@ from app.application.services import (
     ParticipantService,
     ReportService,
 )
+from app.domain.enums import UserMovementType, UserStatus
 from app.infrastructure.db import models
 from app.infrastructure.db.session import get_db
 from app.interfaces.api.auth import (
@@ -46,6 +48,50 @@ def _can_manage_atendimentos(ctx: AuthContext) -> bool:
         return True
     profile = unicodedata.normalize("NFKD", (ctx.profile or "").strip()).encode("ascii", "ignore").decode("ascii").lower()
     return profile in {"coordenador", "coordenadora", "tecnico"}
+
+
+def _can_access_unit_followup(ctx: AuthContext) -> bool:
+    if ctx.is_admin:
+        return True
+    profile = unicodedata.normalize("NFKD", (ctx.profile or "").strip()).encode("ascii", "ignore").decode("ascii").lower()
+    return profile in {"coordenador", "coordenadora", "administrador do sistema"}
+
+
+def _require_unit_followup_access(ctx: AuthContext) -> None:
+    if not _can_access_unit_followup(ctx):
+        raise HTTPException(status_code=403, detail='Acesso negado para Acompanhamento da Unidade.')
+
+
+def _can_access_unit_management(ctx: AuthContext) -> bool:
+    if ctx.is_admin:
+        return True
+    profile = unicodedata.normalize("NFKD", (ctx.profile or "").strip()).encode("ascii", "ignore").decode("ascii").lower()
+    return profile in {"secretaria executiva", "secretaria administrativa", "administrador do sistema"}
+
+
+def _can_access_donation_catalog(ctx: AuthContext) -> bool:
+    return _can_access_unit_management(ctx)
+
+
+def _require_donation_catalog_access(ctx: AuthContext) -> None:
+    if not _can_access_donation_catalog(ctx):
+        raise HTTPException(status_code=403, detail='Acesso negado para Catálogo de doação.')
+
+
+def _require_donation_receipt_access(ctx: AuthContext) -> None:
+    if not _can_access_unit_management(ctx):
+        raise HTTPException(status_code=403, detail='Acesso negado para Recebimento de Doações.')
+
+
+def _serialize_unit_management(unit: models.Unit) -> dict:
+    return {
+        "id": unit.id,
+        "name": unit.name,
+        "city": unit.city,
+        "state": unit.state,
+        "status": "ativo",
+        "logo_path": "/logo-acm-nos-somos.jpg",
+    }
 
 
 def _unit_scope_or_none(ctx: AuthContext) -> int | None:
@@ -108,16 +154,555 @@ def _serialize_atendimentos(db: Session, atendimentos: list[models.Atendimento])
     return [_serialize_atendimento(item, collaborators.get(item.colaborador_id)) for item in atendimentos]
 
 
+def _normalize_donation_description(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise HTTPException(status_code=400, detail='Informe a descrição.')
+    if len(cleaned) > 150:
+        raise HTTPException(status_code=400, detail='Descrição deve ter no máximo 150 caracteres.')
+    return cleaned
+
+
+def _ensure_unique_donation_description(
+    db: Session,
+    description: str,
+    ignore_id: int | None = None,
+) -> None:
+    query = select(models.DonationCatalog).where(func.lower(models.DonationCatalog.description) == description.lower())
+    if ignore_id is not None:
+        query = query.where(models.DonationCatalog.id != ignore_id)
+    if db.scalar(query) is not None:
+        raise HTTPException(status_code=409, detail='Já existe um item de doação com esta descrição.')
+
+
+def _serialize_donation_receipt(item: models.DonationReceipt) -> dict:
+    return {
+        "id": item.id,
+        "donation_catalog_id": item.donation_catalog_id,
+        "donation_catalog_description": item.donation_catalog.description if item.donation_catalog else None,
+        "donation_date": item.donation_date,
+        "item_ns": item.item_ns,
+        "quilograma_kg": float(item.quilograma_kg) if item.quilograma_kg is not None else None,
+        "description": item.description,
+        "donor_name": item.donor_name,
+        "donor_type": item.donor_type,
+        "cpf": item.cpf,
+        "cnpj": item.cnpj,
+        "is_active": item.is_active,
+        "status": "Ativo" if item.is_active else "Inativo",
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "created_by": item.created_by,
+        "updated_by": item.updated_by,
+    }
+
+
+def _ensure_donation_catalog_exists(db: Session, catalog_id: int) -> models.DonationCatalog:
+    item = db.get(models.DonationCatalog, catalog_id)
+    if item is None:
+        raise HTTPException(status_code=400, detail="Tipo de doação inválido.")
+    return item
+
+
+def _apply_donation_receipt_payload(
+    item: models.DonationReceipt,
+    payload: schemas.DonationReceiptCreate | schemas.DonationReceiptUpdate,
+    user_id: int | None,
+) -> None:
+    donor_type = payload.donor_type
+    item.donation_catalog_id = payload.donation_catalog_id
+    item.donation_date = payload.donation_date
+    item.item_ns = payload.item_ns
+    item.quilograma_kg = payload.quilograma_kg
+    item.description = payload.description.strip()
+    item.donor_name = payload.donor_name.strip()
+    item.donor_type = donor_type
+    item.cpf = payload.cpf.strip() if donor_type == "Pessoa Física" and payload.cpf else None
+    item.cnpj = payload.cnpj.strip() if donor_type == "Pessoa Jurídica" and payload.cnpj else None
+    item.updated_by = user_id
+
+
+MONTH_LABELS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
+ACTIVITY_CATEGORIES = ["Socioeducativas", "Oficinas de Esporte", "Vivência Sociocultural", "Oficinas Artísticas"]
+
+
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, 1), date(year, month, last_day)
+
+
+def _resolve_followup_unit(db: Session, ctx: AuthContext, unit_id: int | None) -> tuple[int, list[models.Unit]]:
+    _require_unit_followup_access(ctx)
+    if ctx.is_admin:
+        units = list(db.scalars(select(models.Unit).order_by(models.Unit.name.asc())).all())
+        if not units:
+            raise HTTPException(status_code=404, detail="Nenhuma unidade social encontrada.")
+        selected_id = unit_id or ctx.social_unit_id or units[0].id
+        if not any(unit.id == selected_id for unit in units):
+            raise HTTPException(status_code=404, detail="Unidade social não encontrada.")
+        return int(selected_id), units
+    if ctx.social_unit_id is None:
+        raise HTTPException(status_code=403, detail="Unidade social obrigatória para acompanhamento.")
+    if unit_id is not None and int(unit_id) != int(ctx.social_unit_id):
+        raise HTTPException(status_code=403, detail="Acesso não autorizado para esta Unidade Social.")
+    unit = db.get(models.Unit, ctx.social_unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Unidade social não encontrada.")
+    return int(ctx.social_unit_id), [unit]
+
+
+def _age_count(db: Session, unit_id: int, min_age: int, max_age: int) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(models.User)
+        .where(
+            and_(
+                models.User.unit_id == unit_id,
+                models.User.status == UserStatus.ACTIVE,
+                models.User.age >= min_age,
+                models.User.age <= max_age,
+            )
+        )
+    ) or 0
+
+
+def _movement_count(
+    db: Session,
+    unit_id: int,
+    min_age: int,
+    max_age: int,
+    movement_type: UserMovementType,
+    start_date: date,
+    end_date: date,
+) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(models.UserMovement)
+        .join(models.User, models.User.id == models.UserMovement.user_id)
+        .where(
+            and_(
+                models.User.unit_id == unit_id,
+                models.User.age >= min_age,
+                models.User.age <= max_age,
+                models.UserMovement.movement_type == movement_type,
+                models.UserMovement.movement_date >= start_date,
+                models.UserMovement.movement_date <= end_date,
+            )
+        )
+    ) or 0
+
+
+def _attendance_count(db: Session, unit_id: int, start_date: date, end_date: date) -> int:
+    return db.scalar(
+        select(func.count())
+        .select_from(models.Atendimento)
+        .where(
+            and_(
+                models.Atendimento.unidade_social_id == unit_id,
+                models.Atendimento.data_atendimento >= start_date,
+                models.Atendimento.data_atendimento <= end_date,
+            )
+        )
+    ) or 0
+
+
+def _donation_base_query(unit_id: int, start_date: date, end_date: date):
+    return (
+        select(models.DonationReceipt)
+        .join(models.Collaborator, models.Collaborator.id == models.DonationReceipt.created_by, isouter=True)
+        .where(
+            and_(
+                models.DonationReceipt.is_active.is_(True),
+                models.DonationReceipt.donation_date >= start_date,
+                models.DonationReceipt.donation_date <= end_date,
+                models.Collaborator.social_unit_id == unit_id,
+            )
+        )
+    )
+
+
+def _donation_summary(db: Session, unit_id: int, start_date: date, end_date: date) -> dict:
+    rows = db.execute(
+        _donation_base_query(unit_id, start_date, end_date)
+        .with_only_columns(
+            func.count(models.DonationReceipt.id),
+            func.coalesce(func.sum(models.DonationReceipt.item_ns), 0),
+            func.coalesce(func.sum(models.DonationReceipt.quilograma_kg), 0),
+        )
+    ).one()
+    by_type = db.execute(
+        select(
+            models.DonationCatalog.description,
+            func.count(models.DonationReceipt.id),
+        )
+        .select_from(models.DonationReceipt)
+        .join(models.DonationCatalog, models.DonationCatalog.id == models.DonationReceipt.donation_catalog_id)
+        .join(models.Collaborator, models.Collaborator.id == models.DonationReceipt.created_by, isouter=True)
+        .where(
+            and_(
+                models.DonationReceipt.is_active.is_(True),
+                models.DonationReceipt.donation_date >= start_date,
+                models.DonationReceipt.donation_date <= end_date,
+                models.Collaborator.social_unit_id == unit_id,
+            )
+        )
+        .group_by(models.DonationCatalog.description)
+        .order_by(models.DonationCatalog.description.asc())
+    ).all()
+    return {
+        "total_donations": int(rows[0] or 0),
+        "total_items": int(rows[1] or 0),
+        "total_kg": float(rows[2] or 0),
+        "by_type": [{"type": row[0], "quantity": int(row[1] or 0)} for row in by_type],
+    }
+
+
+def _activity_summary(db: Session, unit_id: int, start_date: date, end_date: date) -> dict:
+    rows = db.execute(
+        select(models.Activity.category, func.count(func.distinct(func.concat(models.GroupAttendance.group_id, "-", models.GroupAttendance.attendance_date))))
+        .select_from(models.GroupAttendance)
+        .join(models.Group, models.Group.id == models.GroupAttendance.group_id)
+        .join(models.ActivityGroup, models.ActivityGroup.group_id == models.Group.id)
+        .join(models.Activity, models.Activity.id == models.ActivityGroup.activity_id)
+        .where(
+            and_(
+                models.Group.unit_id == unit_id,
+                models.GroupAttendance.attendance_date >= start_date,
+                models.GroupAttendance.attendance_date <= end_date,
+            )
+        )
+        .group_by(models.Activity.category)
+    ).all()
+    counts = {category: 0 for category in ACTIVITY_CATEGORIES}
+    for category, total in rows:
+        counts[category or "Outras"] = int(total or 0)
+    items = [{"type": key, "quantity": value} for key, value in counts.items()]
+    return {"items": items, "total": sum(item["quantity"] for item in items)}
+
+
+def _monthly_series(db: Session, unit_id: int, year: int) -> list[dict]:
+    series = []
+    for month in range(1, 13):
+        start_date, end_date = _month_bounds(year, month)
+        series.append(
+            {
+                "month": month,
+                "label": MONTH_LABELS[month - 1],
+                "children_entries": _movement_count(db, unit_id, 6, 11, UserMovementType.ENTRADA, start_date, end_date),
+                "children_exits": _movement_count(db, unit_id, 6, 11, UserMovementType.SAIDA, start_date, end_date),
+                "teen_entries": _movement_count(db, unit_id, 12, 15, UserMovementType.ENTRADA, start_date, end_date),
+                "teen_exits": _movement_count(db, unit_id, 12, 15, UserMovementType.SAIDA, start_date, end_date),
+                "attendances": _attendance_count(db, unit_id, start_date, end_date),
+            }
+        )
+    return series
+
+
+@router.get('/acompanhamento/dashboard')
+def get_unit_followup_dashboard(
+    unidade_id: int | None = None,
+    mes: int | None = None,
+    ano: int | None = None,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    today = date.today()
+    month = mes or today.month
+    year = ano or today.year
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Mês inválido.")
+    if year < 2000 or year > today.year + 1:
+        raise HTTPException(status_code=400, detail="Ano inválido.")
+    unit_id, units = _resolve_followup_unit(db, ctx, unidade_id)
+    selected_unit = next((unit for unit in units if unit.id == unit_id), None)
+    start_date, end_date = _month_bounds(year, month)
+    year_start, year_end = date(year, 1, 1), date(year, 12, 31)
+    previous_month = 12 if month == 1 else month - 1
+    previous_year = year - 1 if month == 1 else year
+    previous_start, previous_end = _month_bounds(previous_year, previous_month)
+
+    children_active = _age_count(db, unit_id, 6, 11)
+    teens_active = _age_count(db, unit_id, 12, 15)
+    attendance_month = _attendance_count(db, unit_id, start_date, end_date)
+    attendance_year = _attendance_count(db, unit_id, year_start, year_end)
+    donations = _donation_summary(db, unit_id, start_date, end_date)
+    activities = _activity_summary(db, unit_id, start_date, end_date)
+    monthly = _monthly_series(db, unit_id, year)
+
+    child_entries = _movement_count(db, unit_id, 6, 11, UserMovementType.ENTRADA, start_date, end_date)
+    child_exits = _movement_count(db, unit_id, 6, 11, UserMovementType.SAIDA, start_date, end_date)
+    teen_entries = _movement_count(db, unit_id, 12, 15, UserMovementType.ENTRADA, start_date, end_date)
+    teen_exits = _movement_count(db, unit_id, 12, 15, UserMovementType.SAIDA, start_date, end_date)
+    current_exits = child_exits + teen_exits
+    previous_exits = _movement_count(db, unit_id, 6, 15, UserMovementType.SAIDA, previous_start, previous_end)
+    days_elapsed = min(today.day, calendar.monthrange(year, month)[1]) if year == today.year and month == today.month else calendar.monthrange(year, month)[1]
+    average_daily = round(attendance_month / max(days_elapsed, 1), 1)
+
+    alerts = []
+    if previous_exits > 0 and current_exits > previous_exits:
+        alerts.append({"type": "warning", "title": "Atenção nas saídas", "message": "As saídas aumentaram em comparação com o mês anterior."})
+    if activities["total"] <= 0:
+        alerts.append({"type": "warning", "title": "Atividades sem registro", "message": "Nenhuma atividade foi registrada no mês selecionado."})
+    else:
+        alerts.append({"type": "success", "title": "Atividades registradas", "message": "Existem atividades registradas para o mês selecionado."})
+    alerts.append({"type": "info", "title": "Reuniões familiares", "message": "Ainda não há tabela de reuniões familiares cadastrada no sistema."})
+    if donations["total_kg"] >= 100 or donations["total_items"] >= 100:
+        alerts.append({"type": "info", "title": "Doações relevantes", "message": "Foram registradas doações expressivas no mês selecionado."})
+
+    return {
+        "unit": {"id": unit_id, "name": selected_unit.name if selected_unit else ""},
+        "available_units": [{"id": unit.id, "name": unit.name} for unit in units],
+        "filters": {"month": month, "year": year},
+        "last_updated": datetime.now().isoformat(),
+        "cards": {
+            "children_active": children_active,
+            "teens_active": teens_active,
+            "attendance_month": attendance_month,
+            "families_in_meetings": 0,
+            "donations_received": donations["total_donations"],
+        },
+        "age_movements": {
+            "children": {"entries": child_entries, "exits": child_exits},
+            "teens": {"entries": teen_entries, "exits": teen_exits},
+        },
+        "monthly_movement": {
+            "items": monthly,
+            "annual_totals": {
+                "children_entries": sum(item["children_entries"] for item in monthly),
+                "children_exits": sum(item["children_exits"] for item in monthly),
+                "teen_entries": sum(item["teen_entries"] for item in monthly),
+                "teen_exits": sum(item["teen_exits"] for item in monthly),
+            },
+        },
+        "activities": activities,
+        "attendances": {
+            "month_total": attendance_month,
+            "daily_average": average_daily,
+            "year_total": attendance_year,
+            "monthly": [{"month": item["month"], "label": item["label"], "total": item["attendances"]} for item in monthly],
+        },
+        "family_meetings": {
+            "total_meetings": 0,
+            "families_total": 0,
+            "average_per_meeting": 0,
+            "items": [],
+        },
+        "donations": donations,
+        "alerts": alerts,
+    }
+
+
 
 @router.get('/health')
 def healthcheck() -> dict:
     return {'status': 'ok'}
 
 
+@router.get('/recebimento-doacoes', response_model=schemas.DonationReceiptListResponse)
+def list_donation_receipts(
+    donation_catalog_id: int | None = None,
+    donation_date: date | None = None,
+    donor_name: str = "",
+    page: int = 1,
+    page_size: int = 100,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_receipt_access(ctx)
+    page = max(1, page)
+    page_size = min(100, max(1, page_size))
+    query = select(models.DonationReceipt)
+    if donation_catalog_id:
+        query = query.where(models.DonationReceipt.donation_catalog_id == donation_catalog_id)
+    if donation_date:
+        query = query.where(models.DonationReceipt.donation_date == donation_date)
+    term = donor_name.strip()
+    if term:
+        query = query.where(func.lower(models.DonationReceipt.donor_name).contains(term.lower()))
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    rows = db.scalars(
+        query.order_by(models.DonationReceipt.donation_date.desc(), models.DonationReceipt.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    return {"items": [_serialize_donation_receipt(row) for row in rows], "total": total, "page": page, "page_size": page_size}
+
+
+@router.get('/recebimento-doacoes/{receipt_id}', response_model=schemas.DonationReceiptRead)
+def get_donation_receipt(
+    receipt_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_receipt_access(ctx)
+    item = db.get(models.DonationReceipt, receipt_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Recebimento de doação não encontrado.")
+    return _serialize_donation_receipt(item)
+
+
+@router.post('/recebimento-doacoes', response_model=schemas.DonationReceiptRead)
+def create_donation_receipt(
+    payload: schemas.DonationReceiptCreate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_receipt_access(ctx)
+    _ensure_donation_catalog_exists(db, payload.donation_catalog_id)
+    item = models.DonationReceipt(created_by=ctx.user_id, updated_by=ctx.user_id)
+    _apply_donation_receipt_payload(item, payload, ctx.user_id)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return _serialize_donation_receipt(item)
+
+
+@router.put('/recebimento-doacoes/{receipt_id}', response_model=schemas.DonationReceiptRead)
+def update_donation_receipt(
+    receipt_id: int,
+    payload: schemas.DonationReceiptUpdate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_receipt_access(ctx)
+    _ensure_donation_catalog_exists(db, payload.donation_catalog_id)
+    item = db.get(models.DonationReceipt, receipt_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Recebimento de doação não encontrado.")
+    _apply_donation_receipt_payload(item, payload, ctx.user_id)
+    db.commit()
+    db.refresh(item)
+    return _serialize_donation_receipt(item)
+
+
+@router.delete('/recebimento-doacoes/{receipt_id}', status_code=204)
+def deactivate_donation_receipt(
+    receipt_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_receipt_access(ctx)
+    item = db.get(models.DonationReceipt, receipt_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Recebimento de doação não encontrado.")
+    item.is_active = False
+    item.updated_by = ctx.user_id
+    db.commit()
+
+
+@router.get('/catalogo-doacoes', response_model=schemas.DonationCatalogListResponse)
+def list_donation_catalog(
+    description: str = "",
+    page: int = 1,
+    page_size: int = 10,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_catalog_access(ctx)
+    page = max(1, page)
+    page_size = min(100, max(1, page_size))
+    query = select(models.DonationCatalog)
+    term = description.strip()
+    if term:
+        query = query.where(func.lower(models.DonationCatalog.description).contains(term.lower()))
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    rows = db.scalars(
+        query.order_by(models.DonationCatalog.description.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    return {"items": rows, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get('/catalogo-doacoes/{catalog_id}', response_model=schemas.DonationCatalogRead)
+def get_donation_catalog(
+    catalog_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_catalog_access(ctx)
+    item = db.get(models.DonationCatalog, catalog_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail='Item de doação não encontrado.')
+    return item
+
+
+@router.post('/catalogo-doacoes', response_model=schemas.DonationCatalogRead)
+def create_donation_catalog(
+    payload: schemas.DonationCatalogCreate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_catalog_access(ctx)
+    description = _normalize_donation_description(payload.description)
+    _ensure_unique_donation_description(db, description)
+    item = models.DonationCatalog(description=description, created_by=ctx.user_id, updated_by=ctx.user_id)
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.put('/catalogo-doacoes/{catalog_id}', response_model=schemas.DonationCatalogRead)
+def update_donation_catalog(
+    catalog_id: int,
+    payload: schemas.DonationCatalogUpdate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_catalog_access(ctx)
+    item = db.get(models.DonationCatalog, catalog_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail='Item de doação não encontrado.')
+    description = _normalize_donation_description(payload.description)
+    _ensure_unique_donation_description(db, description, ignore_id=catalog_id)
+    item.description = description
+    item.updated_by = ctx.user_id
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@router.delete('/catalogo-doacoes/{catalog_id}', status_code=204)
+def delete_donation_catalog(
+    catalog_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_donation_catalog_access(ctx)
+    item = db.get(models.DonationCatalog, catalog_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail='Item de doação não encontrado.')
+    db.delete(item)
+    db.commit()
+
+
 @router.get('/autenticacao/unidades-sociais', response_model=list[schemas.SocialUnitOption])
 def auth_social_units(db: Session = Depends(get_db)):
     rows = db.scalars(select(models.Unit).order_by(models.Unit.name.asc())).all()
     return [{'id': row.id, 'name': row.name} for row in rows]
+
+
+@router.get('/gestao-unidades', response_model=list[schemas.UnitManagementRead])
+def list_unit_management(
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    if not _can_access_unit_management(ctx):
+        raise HTTPException(status_code=403, detail='Acesso negado para Gestão de Unidades.')
+    rows = db.scalars(select(models.Unit).order_by(models.Unit.name.asc())).all()
+    return [_serialize_unit_management(row) for row in rows]
+
+
+@router.get('/gestao-unidades/{unit_id}', response_model=schemas.UnitRead)
+def get_unit_management(
+    unit_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    if not _can_access_unit_management(ctx):
+        raise HTTPException(status_code=403, detail='Acesso negado para Gestão de Unidades.')
+    return CrudService(db).get_unit(unit_id)
 
 
 @router.post('/atendimentos', response_model=schemas.AtendimentoRead)
@@ -203,14 +788,14 @@ def login(payload: schemas.LoginRequest, db: Session = Depends(get_db)):
     if collaborator is None or not verify_password(payload.password, collaborator.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Credenciais invalidas.')
     if not collaborator.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Usuario inativo.')
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Usuário inativo.')
 
     selected_unit_id = payload.social_unit_id
     if not collaborator.is_admin:
         if selected_unit_id is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='Unidade Social obrigatoria.')
         if int(selected_unit_id) != int(collaborator.social_unit_id):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Usuario sem vinculo com a Unidade Social selecionada.')
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='Usuário sem vínculo com a Unidade Social selecionada.')
     elif selected_unit_id is None:
         selected_unit_id = collaborator.social_unit_id
 
@@ -465,43 +1050,43 @@ def user_enrollment_form(
     related_blocks: list[str] = []
     for idx, item in enumerate(comp, start=1):
         related_blocks.extend([
-            f"Composi??o {idx} Nome: {txt(item.nome)}",
-            f"Composi??o {idx} Parentesco: {txt(item.parentesco)}",
-            f"Composi??o {idx} Sexo: {txt(item.sexo)}",
-            f"Composi??o {idx} Idade: {txt(item.idade)}",
-            f"Composi??o {idx} Naturalidade: {txt(item.naturalidade)}",
-            f"Composi??o {idx} Estado Civil: {txt(item.estado_civil)}",
-            f"Composi??o {idx} Escolaridade: {txt(item.escolaridade)}",
+            f"Composição {idx} Nome: {txt(item.nome)}",
+            f"Composição {idx} Parentesco: {txt(item.parentesco)}",
+            f"Composição {idx} Sexo: {txt(item.sexo)}",
+            f"Composição {idx} Idade: {txt(item.idade)}",
+            f"Composição {idx} Naturalidade: {txt(item.naturalidade)}",
+            f"Composição {idx} Estado Civil: {txt(item.estado_civil)}",
+            f"Composição {idx} Escolaridade: {txt(item.escolaridade)}",
         ])
 
     if situacao is not None:
         related_blocks.extend([
-            f"Habita??o Tipo: {txt(situacao.tipo_habitacao)}",
-            f"Habita??o Tipo Outro: {txt(situacao.tipo_habitacao_outro)}",
-            f"Habita??o Ocupa??o: {txt(situacao.ocupacao)}",
-            f"Habita??o Valor Im?vel: {money(situacao.valor_imovel_em_pagamento)}",
-            f"Habita??o Valor Aluguel: {money(situacao.valor_aluguel)}",
-            f"Habita??o Ocupa??o Outro: {txt(situacao.ocupacao_outro)}",
-            f"Habita??o N? C?modos: {txt(situacao.numero_comodos)}",
-            f"Habita??o Observa??es: {txt(situacao.observacoes)}",
+            f"Habitação Tipo: {txt(situacao.tipo_habitacao)}",
+            f"Habitação Tipo Outro: {txt(situacao.tipo_habitacao_outro)}",
+            f"Habitação Ocupação: {txt(situacao.ocupacao)}",
+            f"Habitação Valor Imóvel: {money(situacao.valor_imovel_em_pagamento)}",
+            f"Habitação Valor Aluguel: {money(situacao.valor_aluguel)}",
+            f"Habitação Ocupação Outro: {txt(situacao.ocupacao_outro)}",
+            f"Habitação Nº Cômodos: {txt(situacao.numero_comodos)}",
+            f"Habitação Observações: {txt(situacao.observacoes)}",
         ])
 
     if saude is not None:
         related_blocks.extend([
-            f"Sa?de Assist?ncia M?dica: {txt(saude.assistencia_medica)}",
-            f"Sa?de Problema: {txt(saude.problema_saude)}",
-            f"Sa?de Alergia: {txt(saude.alergia)}",
-            f"Sa?de Medicamento: {txt(saude.medicamento)}",
-            f"Sa?de Doen?as Anteriores: {txt(saude.doencas_anteriores)}",
-            f"Sa?de Fratura: {txt(saude.fratura)}",
-            f"Sa?de Cirurgia: {txt(saude.cirurgia)}",
-            f"Sa?de Defici?ncia: {txt(saude.deficiencia)}",
-            f"Sa?de Observa??es: {txt(saude.observacoes)}",
+            f"Saúde Assistência Médica: {txt(saude.assistencia_medica)}",
+            f"Saúde Problema: {txt(saude.problema_saude)}",
+            f"Saúde Alergia: {txt(saude.alergia)}",
+            f"Saúde Medicamento: {txt(saude.medicamento)}",
+            f"Saúde Doenças Anteriores: {txt(saude.doencas_anteriores)}",
+            f"Saúde Fratura: {txt(saude.fratura)}",
+            f"Saúde Cirurgia: {txt(saude.cirurgia)}",
+            f"Saúde Deficiência: {txt(saude.deficiencia)}",
+            f"Saúde Observações: {txt(saude.observacoes)}",
         ])
 
     if familiar is not None:
         related_blocks.extend([
-            f"Situa??o Familiar: {txt(familiar.informacoes_situacao_familiar)}",
+            f"Situação Familiar: {txt(familiar.informacoes_situacao_familiar)}",
             f"Expectativas no Projeto: {txt(familiar.expectativas_participacao_projeto)}",
         ])
 
@@ -759,7 +1344,7 @@ def create_enrollment(payload: schemas.EnrollmentCreate, db: Session = Depends(g
     user = db.get(models.User, payload.user_id)
     activity = db.get(models.Activity, payload.activity_id)
     if user is None or activity is None:
-        raise HTTPException(status_code=404, detail='Usuario ou atividade nao encontrado.')
+        raise HTTPException(status_code=404, detail='Usuário ou atividade não encontrado.')
     enforce_unit_scope(ctx, user.unit_id)
     enforce_unit_scope(ctx, activity.unit_id)
     return CrudService(db).create_enrollment(payload)
@@ -838,10 +1423,10 @@ def list_frequency_users(
     shift = _normalize_shift(turno)
     group = db.get(models.Group, grupo_id)
     if group is None:
-        raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+        raise HTTPException(status_code=404, detail="Grupo não encontrado.")
     _enforce_effective_unit_scope(ctx, group.unit_id)
     if group.shift != shift:
-        raise HTTPException(status_code=400, detail="Grupo nao pertence ao turno informado.")
+        raise HTTPException(status_code=400, detail="Grupo não pertence ao turno informado.")
 
     query = (
         select(models.User)
@@ -1047,7 +1632,7 @@ def get_group_classification(
     unit_id = _unit_scope_or_none(ctx)
     rows = GroupClassificationService(db).list_classification(group_id=group_id, unit_id=unit_id)
     if not rows:
-        raise HTTPException(status_code=404, detail='Grupo nao encontrado.')
+        raise HTTPException(status_code=404, detail='Grupo não encontrado.')
     return rows[0]
 
 
@@ -1073,4 +1658,3 @@ def unlink_user_from_group(
         raise HTTPException(status_code=403, detail='Acesso negado.')
     unit_id = _unit_scope_or_none(ctx)
     GroupClassificationService(db).unlink_user(payload, unit_id=unit_id)
-

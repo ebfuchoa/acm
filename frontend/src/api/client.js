@@ -2,10 +2,10 @@
 
 const DEFAULT_API_URLS = [
   import.meta.env.VITE_API_URL,
-  'http://127.0.0.1:8001/api/v1',
   'http://127.0.0.1:8000/api/v1',
-  'http://localhost:8001/api/v1',
   'http://localhost:8000/api/v1',
+  'http://127.0.0.1:8001/api/v1',
+  'http://localhost:8001/api/v1',
 ].filter(Boolean)
 
 function extractErrorMessage(data) {
@@ -42,7 +42,8 @@ export async function api(path, options = {}) {
   const token = getToken()
   let lastNetworkError = null
 
-  for (const baseUrl of DEFAULT_API_URLS) {
+  for (let index = 0; index < DEFAULT_API_URLS.length; index += 1) {
+    const baseUrl = DEFAULT_API_URLS[index]
     let response
     try {
       response = await callApi(baseUrl, path, options, token)
@@ -53,6 +54,9 @@ export async function api(path, options = {}) {
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))
+      if (response.status === 404 && data?.detail === 'Not Found' && index < DEFAULT_API_URLS.length - 1) {
+        continue
+      }
       if (response.status === 401) clearAuth()
       throw new Error(extractErrorMessage(data))
     }
@@ -68,7 +72,8 @@ export async function apiRaw(path, options = {}) {
   const token = getToken()
   let lastNetworkError = null
 
-  for (const baseUrl of DEFAULT_API_URLS) {
+  for (let index = 0; index < DEFAULT_API_URLS.length; index += 1) {
+    const baseUrl = DEFAULT_API_URLS[index]
     let response
     try {
       response = await callApi(baseUrl, path, options, token)
@@ -79,6 +84,9 @@ export async function apiRaw(path, options = {}) {
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}))
+      if (response.status === 404 && data?.detail === 'Not Found' && index < DEFAULT_API_URLS.length - 1) {
+        continue
+      }
       if (response.status === 401) clearAuth()
       throw new Error(extractErrorMessage(data))
     }

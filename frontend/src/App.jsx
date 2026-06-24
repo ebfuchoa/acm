@@ -1,11 +1,49 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/dashboard'
-import { UnidadeSocialPage, UsuarioPage, AtividadesPage, GruposPage, InscricoesPage, ColaboradoresPage } from './pages/cadastros'
-import { AtendimentosPage, FrequenciaPage, RelatoriosPage, ParticipantesPage } from './pages/gestao'
+import { UnidadeSocialPage, UsuarioPage, AtividadesPage, GruposPage, InscricoesPage, ColaboradoresPage, CatalogoDoacoesPage } from './pages/cadastros'
+import { AtendimentosPage, FrequenciaPage, RelatoriosPage, ParticipantesPage, AcompanhamentoUnidadePage } from './pages/gestao'
 import { ClassificacaoGrupoPage } from './pages/classificacao/ClassificacaoGrupoPage'
+import { RecebimentoDoacoesPage } from './pages/controle/RecebimentoDoacoesPage'
+import { GestaoUnidadeDetalhePage, GestaoUnidadesPage } from './pages/gestao-unidades'
 import { LoginPage } from './pages/auth'
-import { isAuthenticated } from './auth'
+import { getAuth, isAuthenticated } from './auth'
+
+function normalizeProfile(value) {
+  return String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
+function canAccessUnitManagement() {
+  const auth = getAuth()
+  const profile = normalizeProfile(auth?.profile)
+  return Boolean(auth?.is_admin) || ['secretaria executiva', 'secretaria administrativa', 'administrador do sistema'].includes(profile)
+}
+
+function canAccessUnitFollowup() {
+  const auth = getAuth()
+  const profile = normalizeProfile(auth?.profile)
+  return Boolean(auth?.is_admin) || ['coordenador', 'coordenadora', 'administrador do sistema'].includes(profile)
+}
+
+function UnitManagementRoute({ children }) {
+  if (!canAccessUnitManagement()) return <Navigate to="/" replace />
+  return children
+}
+
+function UnitFollowupRoute({ children }) {
+  if (!canAccessUnitFollowup()) return <Navigate to="/" replace />
+  return children
+}
+
+function DonationCatalogRoute({ children }) {
+  if (!canAccessUnitManagement()) return <Navigate to="/" replace />
+  return children
+}
+
+function DonationReceiptRoute({ children }) {
+  if (!canAccessUnitManagement()) return <Navigate to="/" replace />
+  return children
+}
 
 function ProtectedApp() {
   if (!isAuthenticated()) return <Navigate to="/login" replace />
@@ -20,11 +58,16 @@ function ProtectedApp() {
         <Route path="/cadastros/atividades" element={<AtividadesPage />} />
         <Route path="/cadastros/grupos" element={<GruposPage />} />
         <Route path="/cadastros/inscricoes" element={<InscricoesPage />} />
+        <Route path="/cadastros/catalogo-doacoes" element={<DonationCatalogRoute><CatalogoDoacoesPage /></DonationCatalogRoute>} />
         <Route path="/classificacao-grupo" element={<ClassificacaoGrupoPage />} />
         <Route path="/frequencia" element={<FrequenciaPage />} />
+        <Route path="/recebimento-doacoes" element={<DonationReceiptRoute><RecebimentoDoacoesPage /></DonationReceiptRoute>} />
         <Route path="/atendimentos" element={<AtendimentosPage />} />
         <Route path="/relatorios" element={<RelatoriosPage />} />
         <Route path="/participantes" element={<ParticipantesPage />} />
+        <Route path="/acompanhamento-unidade" element={<UnitFollowupRoute><AcompanhamentoUnidadePage /></UnitFollowupRoute>} />
+        <Route path="/gestao-unidades" element={<UnitManagementRoute><GestaoUnidadesPage /></UnitManagementRoute>} />
+        <Route path="/gestao-unidades/:unitId" element={<UnitManagementRoute><GestaoUnidadeDetalhePage /></UnitManagementRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

@@ -98,14 +98,14 @@ export function ClassificacaoGrupoPage() {
       <div className="card">
         <div className="form-row classificacao-filters-row">
           <div className="field">
-            <label>Grupo</label>
+            <label>GRUPO</label>
             <select value={groupsFilter} onChange={(e) => setGroupsFilter(e.target.value)}>
               <option value="">Todos</option>
               {groupOptions.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
             </select>
           </div>
           <div className="field">
-            <label>Status</label>
+            <label>STATUS</label>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="todos">Todos</option>
               <option value="pendente">Pendentes</option>
@@ -113,7 +113,7 @@ export function ClassificacaoGrupoPage() {
             </select>
           </div>
           <div className="field">
-            <label>Busca por nome</label>
+            <label>BUSCA POR NOME</label>
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Digite o nome do usuário" />
           </div>
         </div>

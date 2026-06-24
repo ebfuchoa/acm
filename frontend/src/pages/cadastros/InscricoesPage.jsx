@@ -17,6 +17,17 @@ export function InscricoesPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
+  useEffect(() => {
+    function showList() {
+      setMode('list')
+      setForm({ user_id: '', activity_id: '' })
+      setError('')
+      setMessage('')
+    }
+    window.addEventListener('inscricoes:list', showList)
+    return () => window.removeEventListener('inscricoes:list', showList)
+  }, [])
+
   async function loadRows() {
     try { setRows(await api('/inscricoes')); setError('') } catch (err) { setError(err.message) }
   }

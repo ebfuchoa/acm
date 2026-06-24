@@ -24,6 +24,21 @@ app.add_middleware(
 
 @app.on_event("startup")
 def on_startup() -> None:
+    if engine.dialect.name == "postgresql":
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF to_regclass('public.recebimento_doacao') IS NOT NULL
+                           AND to_regclass('public.doacao') IS NULL THEN
+                            ALTER TABLE recebimento_doacao RENAME TO doacao;
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
     Base.metadata.create_all(bind=engine)
     if engine.dialect.name == "postgresql":
         with engine.begin() as connection:
@@ -53,6 +68,106 @@ def on_startup() -> None:
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS uq_grupo_unidade_nome_lower
                     ON grupo (unidade_social_id, lower(nome))
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_catalogo_doacao_descricao_lower
+                    ON catalogo_doacao (lower(descricao))
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_catalogo_doacao_descricao
+                    ON catalogo_doacao (descricao)
+                    """
+                )
+            )
+            connection.execute(text("ALTER TABLE catalogo_doacao DROP COLUMN IF EXISTS ativo"))
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF to_regclass('public.recebimento_doacao') IS NOT NULL
+                           AND to_regclass('public.doacao') IS NULL THEN
+                            ALTER TABLE recebimento_doacao RENAME TO doacao;
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            connection.execute(text("ALTER TABLE doacao ALTER COLUMN item_ns DROP NOT NULL"))
+            connection.execute(text("ALTER TABLE doacao ALTER COLUMN quilograma_kg DROP NOT NULL"))
+            connection.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_doacao_catalogo
+                    ON doacao (catalogo_doacao_id)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_doacao_data
+                    ON doacao (data_doacao)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_doacao_nome_doador
+                    ON doacao (nome_doador)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                              AND table_name = 'doacao'
+                              AND column_name = 'quantidade_numero'
+                        ) AND NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                              AND table_name = 'doacao'
+                              AND column_name = 'item_ns'
+                        ) THEN
+                            ALTER TABLE doacao RENAME COLUMN quantidade_numero TO item_ns;
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                              AND table_name = 'doacao'
+                              AND column_name = 'quantidade_kg_itens'
+                        ) AND NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                              AND table_name = 'doacao'
+                              AND column_name = 'quilograma_kg'
+                        ) THEN
+                            ALTER TABLE doacao RENAME COLUMN quantidade_kg_itens TO quilograma_kg;
+                        END IF;
+                    END $$;
                     """
                 )
             )

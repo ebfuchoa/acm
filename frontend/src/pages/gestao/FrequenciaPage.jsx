@@ -248,20 +248,20 @@ export function FrequenciaPage() {
         <div className="form-row frequencia-filtros-row">
           <div className="field">
             <DatePickerBr
-              label="Semana de referência"
+              label="SEMANA DE REFERÊNCIA"
               value={semanaReferenciaBr}
               onChange={(v) => setSemanaReferenciaBr(startOfWeekBr(v) || v)}
             />
           </div>
           <div className="field">
-            <label>Turno</label>
+            <label>TURNO</label>
             <select value={turno} onChange={(e) => onTurnoChange(e.target.value)}>
               <option value="manha">Manhã</option>
               <option value="tarde">Tarde</option>
             </select>
           </div>
           <div className="field">
-            <label>Grupo</label>
+            <label>GRUPO</label>
             <select value={grupoId} onChange={(e) => setGrupoId(e.target.value)}>
               {!grupos.length && <option value="">Nenhum grupo disponível</option>}
               {!!grupos.length && <option value={ALL_GROUPS_VALUE}>Todos</option>}

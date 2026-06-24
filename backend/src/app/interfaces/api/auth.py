@@ -69,7 +69,7 @@ def get_current_auth_context(
     user_id = int(payload.get('user_id'))
     collaborator = db.get(models.Collaborator, user_id)
     if collaborator is None or not collaborator.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Usuario invalido ou inativo.')
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Usuário inválido ou inativo.')
 
     token_permissions = payload.get('permissions') or []
     if not isinstance(token_permissions, list):

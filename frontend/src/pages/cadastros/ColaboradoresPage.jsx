@@ -31,6 +31,18 @@ export function ColaboradoresPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
+  useEffect(() => {
+    function showList() {
+      setMode('list')
+      setEditingId(null)
+      setForm(emptyForm)
+      setError('')
+      setMessage('')
+    }
+    window.addEventListener('colaboradores:list', showList)
+    return () => window.removeEventListener('colaboradores:list', showList)
+  }, [])
+
   async function loadData() {
     try {
       const [collaborators, socialUnits, profileOptions] = await Promise.all([api('/colaboradores'), api('/unidades-sociais'), api('/perfis')])

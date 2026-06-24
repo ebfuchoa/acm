@@ -1,4 +1,6 @@
-export function ResponsavelTab({ form, isReadOnly, onChange, STATES, citiesResponsible, fieldErrors = {} }) {
+import { StateCityFields } from '../../../../components/StateCityFields'
+
+export function ResponsavelTab({ form, isReadOnly, onChange, fieldErrors = {} }) {
   return <>
     <strong className="section-title">Identificação e Situação de Trabalho do Responsável (Pai, Mãe ou Outro)</strong>
     <div className="form-row form-row-3">
@@ -19,8 +21,18 @@ export function ResponsavelTab({ form, isReadOnly, onChange, STATES, citiesRespo
       <div className="field"><label>Renda Bruta Mensal R$</label><input value={form.responsible_income} onChange={(e) => onChange('responsible_income', e.target.value)} disabled={isReadOnly} /></div>
     </div>
     <div className="form-row form-row-4">
-      <div className="field"><label>Estado</label><select value={form.responsible_state} onChange={(e) => onChange('responsible_state', e.target.value)} disabled={isReadOnly}><option value="">Estado</option>{STATES.map((s) => <option key={s.uf} value={s.uf}>{s.name}</option>)}</select></div>
-      <div className="field"><label>Município</label><select value={form.responsible_city} onChange={(e) => onChange('responsible_city', e.target.value)} disabled={isReadOnly || !form.responsible_state}><option value="">Município</option>{citiesResponsible.map((c) => <option key={c}>{c}</option>)}</select></div>
+      <StateCityFields
+        stateValue={form.responsible_state}
+        cityValue={form.responsible_city}
+        onStateChange={(value) => onChange('responsible_state', value)}
+        onCityChange={(value) => onChange('responsible_city', value)}
+        statePlaceholder="Estado"
+        cityLabel="Município"
+        cityPlaceholder="Município"
+        disabled={isReadOnly}
+        stateError={fieldErrors.responsible_state}
+        cityError={fieldErrors.responsible_city}
+      />
       <div className="field"><label>Telefone</label><input value={form.responsible_phone} onChange={(e) => onChange('responsible_phone', e.target.value)} disabled={isReadOnly} /></div>
       <div className="field"><label>Horário</label><input value={form.responsible_schedule} onChange={(e) => onChange('responsible_schedule', e.target.value)} maxLength={5} disabled={isReadOnly} /></div>
     </div>

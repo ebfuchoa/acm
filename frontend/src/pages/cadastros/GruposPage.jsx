@@ -28,6 +28,19 @@ export function GruposPage() {
   const [message, setMessage] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
 
+  useEffect(() => {
+    function showList() {
+      setMode('list')
+      setEditingId(null)
+      setForm(emptyForm)
+      setFieldErrors({})
+      setError('')
+      setMessage('')
+    }
+    window.addEventListener('grupos:list', showList)
+    return () => window.removeEventListener('grupos:list', showList)
+  }, [])
+
   async function loadRows() {
     if (!canRead) return
     try {

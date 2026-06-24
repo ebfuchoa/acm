@@ -5,12 +5,17 @@ function normalizeProfile(value) {
   return String(value || '').trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
+function openListView(eventName) {
+  window.dispatchEvent(new Event(`${eventName}:list`))
+}
+
 export function Layout({ children }) {
   const location = useLocation()
   const auth = getAuth()
   const permissions = auth?.permissions || []
   const profile = normalizeProfile(auth?.profile)
   const isSecretariaAdministrativa = ['secretaria administrativa', 'secretaria executiva'].includes(profile)
+  const canAccessUnitManagement = Boolean(auth?.is_admin) || ['secretaria executiva', 'secretaria administrativa', 'administrador do sistema'].includes(profile)
   const canManageAtendimentos = Boolean(auth?.is_admin) || ['coordenador', 'coordenadora', 'tecnico'].includes(profile)
   const canSeeUnits = Boolean(auth?.is_admin) || permissions.includes('units.read')
   const canSeeCollaborators = Boolean(auth?.is_admin) || permissions.includes('collaborators.read')
@@ -18,14 +23,18 @@ export function Layout({ children }) {
   const canSeeGroups = Boolean(auth?.is_admin) || permissions.includes('groups.read')
   const canSeeAtendimentos = canManageAtendimentos
   const canSeeUsuario = !isSecretariaAdministrativa
-  const canSeeControle = !isSecretariaAdministrativa
+  const canSeeControle = !isSecretariaAdministrativa || canAccessUnitManagement
   const canSeeAcompanhamento = !isSecretariaAdministrativa
+  const canSeeUnitFollowup = Boolean(auth?.is_admin) || ['coordenador', 'coordenadora', 'administrador do sistema'].includes(profile)
   const brandName = getDisplayUnitName(auth)
   const currentPath = location.pathname
   const isCadastrosActive = currentPath.startsWith('/cadastros')
   const isControleActive = currentPath.startsWith('/classificacao-grupo')
     || currentPath.startsWith('/frequencia')
     || currentPath.startsWith('/atendimentos')
+    || currentPath.startsWith('/recebimento-doacoes')
+  const isAcompanhamentoActive = currentPath.startsWith('/participantes')
+    || currentPath.startsWith('/acompanhamento-unidade')
 
   return (
     <div className="app-shell">
@@ -54,11 +63,12 @@ export function Layout({ children }) {
               Cadastros
             </button>
             <div className="sub-nav">
-              {canSeeUnits && <NavLink to="/cadastros/unidade-social" className="sub-nav-item">Unidade social</NavLink>}
-              {canSeeCollaborators && <NavLink to="/cadastros/colaboradores" className="sub-nav-item">Colaboradores</NavLink>}
-              {canSeeUsuario && <NavLink to="/cadastros/usuario" className="sub-nav-item">Usuário</NavLink>}
-              {!isSecretariaAdministrativa && canSeeGroups && <NavLink to="/cadastros/grupos" className="sub-nav-item">Grupo</NavLink>}
-              {!isSecretariaAdministrativa && canSeeActivities && <NavLink to="/cadastros/atividades" className="sub-nav-item">Atividade</NavLink>}
+              {canSeeUnits && <NavLink to="/cadastros/unidade-social" className="sub-nav-item" onClick={() => openListView('unidade-social')}>Unidade social</NavLink>}
+              {canSeeCollaborators && <NavLink to="/cadastros/colaboradores" className="sub-nav-item" onClick={() => openListView('colaboradores')}>Colaboradores</NavLink>}
+              {canSeeUsuario && <NavLink to="/cadastros/usuario" className="sub-nav-item" onClick={() => openListView('usuarios')}>Usuário</NavLink>}
+              {!isSecretariaAdministrativa && canSeeGroups && <NavLink to="/cadastros/grupos" className="sub-nav-item" onClick={() => openListView('grupos')}>Grupo</NavLink>}
+              {!isSecretariaAdministrativa && canSeeActivities && <NavLink to="/cadastros/atividades" className="sub-nav-item" onClick={() => openListView('atividades')}>Atividade</NavLink>}
+              {canAccessUnitManagement && <NavLink to="/cadastros/catalogo-doacoes" className="sub-nav-item" onClick={() => openListView('catalogo-doacoes')}>Catálogo de doação</NavLink>}
             </div>
           </div>
 
@@ -68,16 +78,29 @@ export function Layout({ children }) {
                 Controle
               </button>
               <div className="sub-nav">
-                <NavLink to="/classificacao-grupo" className="sub-nav-item">Classificação por Grupo</NavLink>
-                <NavLink to="/frequencia" className="sub-nav-item">Frequência</NavLink>
-                {canSeeAtendimentos && <NavLink to="/atendimentos" className="sub-nav-item" onClick={() => window.dispatchEvent(new Event('atendimentos:list'))}>Atendimento</NavLink>}
+                {!isSecretariaAdministrativa && <NavLink to="/classificacao-grupo" className="sub-nav-item">Classificação por Grupo</NavLink>}
+                {!isSecretariaAdministrativa && <NavLink to="/frequencia" className="sub-nav-item">Frequência</NavLink>}
+                {canSeeAtendimentos && <NavLink to="/atendimentos" className="sub-nav-item" onClick={() => openListView('atendimentos')}>Atendimento</NavLink>}
+                {canAccessUnitManagement && <NavLink to="/recebimento-doacoes" className="sub-nav-item" onClick={() => openListView('recebimento-doacoes')}>Recebimento de Doações</NavLink>}
               </div>
             </div>
           )}
 
-          {canSeeAcompanhamento && (
-            <NavLink to="/participantes" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              Acompanhamento
+          {(canSeeAcompanhamento || canSeeUnitFollowup) && (
+            <div className="nav-group">
+              <button type="button" className={`nav-item nav-trigger ${isAcompanhamentoActive ? 'active' : ''}`} aria-haspopup="true">
+                Acompanhamento
+              </button>
+              <div className="sub-nav">
+                {canSeeUnitFollowup && <NavLink to="/acompanhamento-unidade" className="sub-nav-item">Acompanhamento da Unidade</NavLink>}
+                {canSeeAcompanhamento && <NavLink to="/participantes" className="sub-nav-item">Participantes</NavLink>}
+              </div>
+            </div>
+          )}
+
+          {canAccessUnitManagement && (
+            <NavLink to="/gestao-unidades" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              Gestão de Unidades
             </NavLink>
           )}
         </div>

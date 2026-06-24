@@ -106,7 +106,7 @@ class CrudService:
         if colaborador_id is not None:
             collaborator = self.db.get(models.Collaborator, colaborador_id)
             if collaborator is None:
-                raise HTTPException(status_code=404, detail="Colaborador responsavel nao encontrado.")
+                raise HTTPException(status_code=404, detail="Colaborador responsável não encontrado.")
             atendente_nome = collaborator.name
             atendente_funcao = collaborator.role
         item = models.Atendimento(
@@ -131,7 +131,7 @@ class CrudService:
     def get_atendimento(self, atendimento_id: int) -> models.Atendimento:
         item = self.db.get(models.Atendimento, atendimento_id)
         if item is None:
-            raise HTTPException(status_code=404, detail="Atendimento nao encontrado.")
+            raise HTTPException(status_code=404, detail="Atendimento não encontrado.")
         return item
 
     def update_atendimento(
@@ -162,7 +162,7 @@ class CrudService:
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="JÃ¡ existe unidade com o mesmo nome ou e-mail.",
+                detail="Já existe unidade com o mesmo nome ou e-mail.",
             )
 
     def list_units(self) -> list[models.Unit]:
@@ -171,7 +171,7 @@ class CrudService:
     def get_unit(self, unit_id: int) -> models.Unit:
         unit = self.db.get(models.Unit, unit_id)
         if unit is None:
-            raise HTTPException(status_code=404, detail="Unidade nÃ£o encontrada.")
+            raise HTTPException(status_code=404, detail="Unidade não encontrada.")
         return unit
 
     def update_unit(self, unit_id: int, payload: schemas.UnitUpdate) -> models.Unit:
@@ -186,7 +186,7 @@ class CrudService:
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="JÃ¡ existe unidade com o mesmo nome ou e-mail.",
+                detail="Já existe unidade com o mesmo nome ou e-mail.",
             )
 
     def delete_unit(self, unit_id: int) -> None:
@@ -247,7 +247,7 @@ class CrudService:
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Unidade possui vÃ­nculos e nÃ£o pode ser excluÃ­da.",
+                detail="Unidade possui vínculos e não pode ser excluída.",
             )
 
     def create_user(self, payload: schemas.UserCreate) -> models.User:
@@ -270,8 +270,8 @@ class CrudService:
         )
         if duplicate is not None:
             if duplicate.rg == payload_data["rg"]:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="JÃ¡ existe usuÃ¡rio com o mesmo RG.")
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="JÃ¡ existe usuÃ¡rio com o mesmo NIS.")
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe usuário com o mesmo RG.")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe usuário com o mesmo NIS.")
         try:
             user = models.User(**user_data)
             self.db.add(user)
@@ -338,7 +338,7 @@ class CrudService:
                 )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="NÃ£o foi possÃ­vel salvar o usuÃ¡rio por conflito de dados.",
+                detail="Não foi possível salvar o usuário por conflito de dados.",
             )
 
     def list_users(self, status_filter: str | None = None) -> list[models.User]:
@@ -354,7 +354,7 @@ class CrudService:
             .where(models.User.id == user_id)
         )
         if user is None:
-            raise HTTPException(status_code=404, detail="UsuÃ¡rio nÃ£o encontrado.")
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
         return user
 
     def update_user(self, user_id: int, payload: schemas.UserUpdate) -> models.User:
@@ -380,8 +380,8 @@ class CrudService:
         )
         if duplicate is not None:
             if duplicate.rg == payload_data["rg"]:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="JÃ¡ existe usuÃ¡rio com o mesmo RG.")
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="JÃ¡ existe usuÃ¡rio com o mesmo NIS.")
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe usuário com o mesmo RG.")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe usuário com o mesmo NIS.")
         for key, value in user_data.items():
             setattr(user, key, value)
         try:
@@ -441,13 +441,13 @@ class CrudService:
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="NÃ£o foi possÃ­vel atualizar o usuÃ¡rio por conflito de dados.",
+                detail="Não foi possível atualizar o usuário por conflito de dados.",
             )
 
     def delete_user(self, user_id: int) -> None:
         user = self.db.get(models.User, user_id)
         if user is None:
-            raise HTTPException(status_code=404, detail="UsuÃ¡rio nÃ£o encontrado.")
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
         try:
             current_status = user.status.value if isinstance(user.status, UserStatus) else str(user.status)
             if current_status != UserStatus.INACTIVE.value:
@@ -465,13 +465,13 @@ class CrudService:
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="UsuÃ¡rio possui vÃ­nculos e nÃ£o pode ser excluÃ­do.",
+                detail="Usuário possui vínculos e não pode ser excluído.",
             )
 
     def activate_user(self, user_id: int) -> models.User:
         user = self.db.get(models.User, user_id)
         if user is None:
-            raise HTTPException(status_code=404, detail="UsuÃ¡rio nÃ£o encontrado.")
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
         current_status = user.status.value if isinstance(user.status, UserStatus) else str(user.status)
         if current_status != UserStatus.ACTIVE.value:
             status_updated_at = datetime.utcnow()
@@ -493,16 +493,16 @@ class CrudService:
         groups = [self.db.get(models.Group, group_id) for group_id in payload_data["group_ids"]]
         missing_groups = [group_id for group_id, group in zip(payload_data["group_ids"], groups) if group is None]
         if missing_groups:
-            raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+            raise HTTPException(status_code=404, detail="Grupo não encontrado.")
         if any(group.unit_id != payload_data["unit_id"] for group in groups if group is not None):
-            raise HTTPException(status_code=400, detail="Grupo nao pertence a Unidade Social da atividade.")
+            raise HTTPException(status_code=400, detail="Grupo não pertence à Unidade Social da atividade.")
         duplicate = self.db.scalar(
             select(models.Activity).where(func.lower(models.Activity.name) == activity_name.lower())
         )
         if duplicate is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Ja existe uma atividade cadastrada com este nome.",
+                detail="Já existe uma atividade cadastrada com este nome.",
             )
         payload_data["name"] = activity_name
         payload_data["group_id"] = payload_data["group_ids"][0]
@@ -533,9 +533,9 @@ class CrudService:
         groups = [self.db.get(models.Group, group_id) for group_id in payload.group_ids]
         missing_groups = [group_id for group_id, group in zip(payload.group_ids, groups) if group is None]
         if missing_groups:
-            raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+            raise HTTPException(status_code=404, detail="Grupo não encontrado.")
         if any(group.unit_id != activity.unit_id for group in groups if group is not None):
-            raise HTTPException(status_code=400, detail="Grupo nao pertence a Unidade Social da atividade.")
+            raise HTTPException(status_code=400, detail="Grupo não pertence à Unidade Social da atividade.")
         duplicate = self.db.scalar(
             select(models.Activity).where(
                 and_(
@@ -547,7 +547,7 @@ class CrudService:
         if duplicate is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Ja existe uma atividade cadastrada com este nome.",
+                detail="Já existe uma atividade cadastrada com este nome.",
             )
         activity.name = activity_name
         activity.group_id = payload.group_ids[0]
@@ -574,7 +574,7 @@ class CrudService:
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Atividade possui vÃ­nculos e nÃ£o pode ser excluÃ­da.",
+                detail="Atividade possui vínculos e não pode ser excluída.",
             )
 
     def create_group(self, payload: schemas.GroupCreate) -> models.Group:
@@ -588,7 +588,7 @@ class CrudService:
             )
         )
         if duplicate is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ja existe um grupo cadastrado com este nome.")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe um grupo cadastrado com este nome.")
         item = models.Group(
             unit_id=payload.unit_id,
             name=group_name,
@@ -610,7 +610,7 @@ class CrudService:
     def get_group(self, group_id: int) -> models.Group:
         item = self.db.get(models.Group, group_id)
         if item is None:
-            raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+            raise HTTPException(status_code=404, detail="Grupo não encontrado.")
         return item
 
     def update_group(self, group_id: int, payload: schemas.GroupUpdate) -> models.Group:
@@ -626,7 +626,7 @@ class CrudService:
             )
         )
         if duplicate is not None:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ja existe um grupo cadastrado com este nome.")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe um grupo cadastrado com este nome.")
         item.name = group_name
         item.shift = payload.shift
         item.initial_age = payload.initial_age
@@ -653,7 +653,7 @@ class CrudService:
     def delete_enrollment(self, enrollment_id: int) -> None:
         enrollment = self.db.get(models.Enrollment, enrollment_id)
         if enrollment is None:
-            raise HTTPException(status_code=404, detail="InscriÃ§Ã£o nÃ£o encontrada.")
+            raise HTTPException(status_code=404, detail="Inscrição não encontrada.")
         try:
             self.db.delete(enrollment)
             self.db.commit()
@@ -661,7 +661,7 @@ class CrudService:
             self.db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="InscriÃ§Ã£o possui vÃ­nculos e nÃ£o pode ser excluÃ­da.",
+                detail="Inscrição possui vínculos e não pode ser excluída.",
             )
 
     def create_collaborator(self, payload: schemas.CollaboratorCreate) -> models.Collaborator:
@@ -677,7 +677,7 @@ class CrudService:
             return collaborator
         except IntegrityError:
             self.db.rollback()
-            raise HTTPException(status_code=409, detail="Ja existe colaborador com mesmo CPF ou e-mail.")
+            raise HTTPException(status_code=409, detail="Já existe colaborador com mesmo CPF ou e-mail.")
 
     def list_collaborators(self) -> list[models.Collaborator]:
         return list(self.db.scalars(select(models.Collaborator)).all())
@@ -685,7 +685,7 @@ class CrudService:
     def get_collaborator(self, collaborator_id: int) -> models.Collaborator:
         row = self.db.get(models.Collaborator, collaborator_id)
         if row is None:
-            raise HTTPException(status_code=404, detail="Colaborador nao encontrado.")
+            raise HTTPException(status_code=404, detail="Colaborador não encontrado.")
         return row
 
     def update_collaborator(
@@ -705,7 +705,7 @@ class CrudService:
             return row
         except IntegrityError:
             self.db.rollback()
-            raise HTTPException(status_code=409, detail="Ja existe colaborador com mesmo CPF ou e-mail.")
+            raise HTTPException(status_code=409, detail="Já existe colaborador com mesmo CPF ou e-mail.")
 
     def _validate_collaborator_role(self, role: str) -> None:
         profile = self.db.scalar(select(models.Profile).where(models.Profile.name == role))
@@ -742,7 +742,7 @@ class AttendanceService:
         if attendance is None or attendance.status != AttendanceStatus.ABSENT:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Justificativa sÃ³ pode ser criada para falta registrada.",
+                detail="Justificativa só pode ser criada para falta registrada.",
             )
         justification = models.AbsenceJustification(**payload.model_dump())
         attendance.status = AttendanceStatus.JUSTIFIED_ABSENT
@@ -756,7 +756,7 @@ class AttendanceService:
     ) -> models.AbsenceJustification:
         item = self.db.get(models.AbsenceJustification, justification_id)
         if item is None:
-            raise HTTPException(status_code=404, detail="Justificativa nÃ£o encontrada.")
+            raise HTTPException(status_code=404, detail="Justificativa não encontrada.")
         item.status = payload.status
         self.db.commit()
         self.db.refresh(item)
@@ -781,7 +781,7 @@ class ReportService:
     def send_report(self, report_id: int) -> models.Report:
         report = self.db.get(models.Report, report_id)
         if report is None:
-            raise HTTPException(status_code=404, detail="RelatÃ³rio nÃ£o encontrado")
+            raise HTTPException(status_code=404, detail="Relatório não encontrado")
         report.status = ReportStatus.SENT
         self.db.commit()
         self.db.refresh(report)
@@ -790,9 +790,9 @@ class ReportService:
     def review_report(self, report_id: int, payload: schemas.ReportDecision) -> models.Report:
         report = self.db.get(models.Report, report_id)
         if report is None:
-            raise HTTPException(status_code=404, detail="RelatÃ³rio nÃ£o encontrado")
+            raise HTTPException(status_code=404, detail="Relatório não encontrado")
         if payload.decision == ReportStatus.REJECTED and not payload.reason:
-            raise HTTPException(status_code=400, detail="Motivo obrigatÃ³rio para reprovaÃ§Ã£o")
+            raise HTTPException(status_code=400, detail="Motivo obrigatório para reprovação")
         report.status = payload.decision
         approval = models.ReportApproval(
             report_id=report_id,
@@ -822,7 +822,7 @@ class ParticipantService:
     def update_stage(self, participant_id: int, payload: schemas.ParticipantStageUpdate) -> models.Participant:
         item = self.db.get(models.Participant, participant_id)
         if item is None:
-            raise HTTPException(status_code=404, detail="Participante nÃ£o encontrado")
+            raise HTTPException(status_code=404, detail="Participante não encontrado")
         current = item.current_data or {}
         current[payload.stage] = payload.data
         item.current_data = current
@@ -845,11 +845,11 @@ class ParticipantService:
     def conclude(self, participant_id: int, _: schemas.ParticipantConclude) -> models.Participant:
         item = self.db.get(models.Participant, participant_id)
         if item is None:
-            raise HTTPException(status_code=404, detail="Participante nÃ£o encontrado")
+            raise HTTPException(status_code=404, detail="Participante não encontrado")
         current = item.current_data or {}
         missing = [key for key in self.REQUIRED_CONCLUDE_FIELDS if key not in current]
         if missing:
-            raise HTTPException(status_code=400, detail=f"Etapas obrigatÃ³rias pendentes: {', '.join(missing)}")
+            raise HTTPException(status_code=400, detail=f"Etapas obrigatórias pendentes: {', '.join(missing)}")
         item.status = "concluido"
         self.db.commit()
         self.db.refresh(item)
@@ -952,40 +952,40 @@ class GroupClassificationService:
         user = self.db.get(models.User, payload.user_id)
         group = self.db.get(models.Group, payload.group_id)
         if user is None:
-            raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
         if group is None:
-            raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+            raise HTTPException(status_code=404, detail="Grupo não encontrado.")
         if unit_id is not None and group.unit_id != unit_id:
-            raise HTTPException(status_code=403, detail="Grupo nao pertence a Unidade Social logada.")
+            raise HTTPException(status_code=403, detail="Grupo não pertence à Unidade Social logada.")
         if unit_id is not None and user.unit_id != unit_id:
-            raise HTTPException(status_code=403, detail="Usuario nao pertence a Unidade Social logada.")
+            raise HTTPException(status_code=403, detail="Usuário não pertence à Unidade Social logada.")
         if not self._is_user_active(user):
-            raise HTTPException(status_code=400, detail="Usuario inativo nao pode ser vinculado.")
+            raise HTTPException(status_code=400, detail="Usuário inativo não pode ser vinculado.")
         if self._normalize_shift(user.shift) != self._normalize_shift(group.shift):
-            raise HTTPException(status_code=400, detail="Usuario nao pertence ao turno deste grupo.")
+            raise HTTPException(status_code=400, detail="Usuário não pertence ao turno deste grupo.")
         if not (group.initial_age <= user.age <= group.final_age):
-            raise HTTPException(status_code=400, detail="Usuario nao pertence a faixa etaria deste grupo.")
+            raise HTTPException(status_code=400, detail="Usuário não pertence à faixa etária deste grupo.")
         duplicate = self.db.scalar(
             select(models.UserGroup).where(
                 and_(models.UserGroup.user_id == payload.user_id, models.UserGroup.group_id == payload.group_id)
             )
         )
         if duplicate is not None:
-            raise HTTPException(status_code=409, detail="Usuario ja esta vinculado a este grupo.")
+            raise HTTPException(status_code=409, detail="Usuário já está vinculado a este grupo.")
         self.db.add(models.UserGroup(user_id=payload.user_id, group_id=payload.group_id))
         self.db.commit()
 
     def unlink_user(self, payload: schemas.GroupClassificationLinkPayload, unit_id: int | None = None) -> None:
         user = self.db.get(models.User, payload.user_id)
         if user is None:
-            raise HTTPException(status_code=404, detail="Usuario nao encontrado.")
+            raise HTTPException(status_code=404, detail="Usuário não encontrado.")
         if unit_id is not None and user.unit_id != unit_id:
-            raise HTTPException(status_code=403, detail="Usuario nao pertence a Unidade Social logada.")
+            raise HTTPException(status_code=403, detail="Usuário não pertence à Unidade Social logada.")
         group = self.db.get(models.Group, payload.group_id)
         if group is None:
-            raise HTTPException(status_code=404, detail="Grupo nao encontrado.")
+            raise HTTPException(status_code=404, detail="Grupo não encontrado.")
         if unit_id is not None and group.unit_id != unit_id:
-            raise HTTPException(status_code=403, detail="Grupo nao pertence a Unidade Social logada.")
+            raise HTTPException(status_code=403, detail="Grupo não pertence à Unidade Social logada.")
         row = self.db.scalar(
             select(models.UserGroup).where(
                 and_(models.UserGroup.user_id == payload.user_id, models.UserGroup.group_id == payload.group_id)
@@ -995,6 +995,4 @@ class GroupClassificationService:
             return
         self.db.delete(row)
         self.db.commit()
-
-
 

@@ -1,8 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { api } from '../../api/client'
-import { STATES, CITIES_BY_STATE } from '../../data/brLocations'
 import { ActionIconButton } from '../../components/ActionIconButton'
 import { CadastroListView } from '../../components/CadastroListView'
+import { StateCityFields } from '../../components/StateCityFields'
 
 const emptyForm = { name: '', address: '', district: '', city: '', zip_code: '', state: '', phone: '', email: '' }
 const columns = [
@@ -27,7 +27,18 @@ export function UnidadeSocialPage() {
   const [message, setMessage] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
 
-  const cityOptions = useMemo(() => CITIES_BY_STATE[form.state] || [], [form.state])
+  useEffect(() => {
+    function showList() {
+      setMode('list')
+      setEditingId(null)
+      setForm(emptyForm)
+      setFieldErrors({})
+      setError('')
+      setMessage('')
+    }
+    window.addEventListener('unidade-social:list', showList)
+    return () => window.removeEventListener('unidade-social:list', showList)
+  }, [])
 
   const filteredRows = useMemo(() => {
     return units.filter((row) => columns.some((c) => String(row[c.key] ?? '').toLowerCase().includes(search.toLowerCase())))
@@ -49,10 +60,10 @@ export function UnidadeSocialPage() {
 
   function validateForm(payload) {
     const errors = {}
-    Object.entries(payload).forEach(([k, v]) => { if (!String(v).trim()) errors[k] = 'Campo obrigatÃ³rio.' })
+    Object.entries(payload).forEach(([k, v]) => { if (!String(v).trim()) errors[k] = 'Campo obrigatório.' })
     if (payload.zip_code && !/^\d{5}-\d{3}$/.test(payload.zip_code)) errors.zip_code = 'CEP deve estar no formato 00000-000.'
     if (payload.phone && !/^\(\d{2}\)\s\d{5}-\d{4}$/.test(payload.phone)) errors.phone = 'Telefone deve estar no formato (00) 00000-0000.'
-    if (payload.email && !validateEmail(payload.email)) errors.email = 'Informe um e-mail vÃ¡lido.'
+    if (payload.email && !validateEmail(payload.email)) errors.email = 'Informe um e-mail válido.'
     return errors
   }
 
@@ -66,7 +77,7 @@ export function UnidadeSocialPage() {
   async function saveUnit(e) {
     e.preventDefault(); setError(''); setMessage('')
     const payload = normalizedPayload(); const errors = validateForm(payload); setFieldErrors(errors)
-    if (Object.keys(errors).length > 0) { setError('Revise os campos obrigatÃ³rios e formatos antes de salvar.'); return }
+    if (Object.keys(errors).length > 0) { setError('Revise os campos obrigatórios e formatos antes de salvar.'); return }
     try {
       if (editingId) await api(`/unidades-sociais/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) })
       else await api('/unidades-sociais', { method: 'POST', body: JSON.stringify(payload) })
@@ -81,11 +92,11 @@ export function UnidadeSocialPage() {
   }
 
   async function onDelete(row) {
-    if (!window.confirm('Confirma a exclusÃ£o da unidade?')) return
+    if (!window.confirm('Confirma a exclusão da unidade?')) return
     try {
       await api(`/unidades-sociais/${row.id}`, { method: 'DELETE' })
       await loadUnits()
-      setMessage('Unidade excluÃ­da com sucesso.')
+      setMessage('Unidade excluída com sucesso.')
       setError('')
     } catch (err) {
       setError(err.message)
@@ -100,12 +111,19 @@ export function UnidadeSocialPage() {
         <form onSubmit={saveUnit} className="card">
           <div className="form-row">
             <div className="field"><label>Nome da Unidade</label><input value={form.name} onChange={(e) => onChange('name', e.target.value)} required />{fieldErrors.name && <p className="error">{fieldErrors.name}</p>}</div>
-            <div className="field"><label>EndereÃ§o</label><input value={form.address} onChange={(e) => onChange('address', e.target.value)} required />{fieldErrors.address && <p className="error">{fieldErrors.address}</p>}</div>
+            <div className="field"><label>Endereço</label><input value={form.address} onChange={(e) => onChange('address', e.target.value)} required />{fieldErrors.address && <p className="error">{fieldErrors.address}</p>}</div>
           </div>
           <div className="form-row form-row-3">
             <div className="field"><label>Bairro</label><input value={form.district} onChange={(e) => onChange('district', e.target.value)} required />{fieldErrors.district && <p className="error">{fieldErrors.district}</p>}</div>
-            <div className="field"><label>Estado</label><select value={form.state} onChange={(e) => onChange('state', e.target.value)} required><option value="">Selecione o Estado</option>{STATES.map((uf) => <option key={uf.uf} value={uf.uf}>{uf.name} ({uf.uf})</option>)}</select>{fieldErrors.state && <p className="error">{fieldErrors.state}</p>}</div>
-            <div className="field"><label>Cidade</label><select value={form.city} onChange={(e) => onChange('city', e.target.value)} required disabled={!form.state}><option value="">Selecione a Cidade</option>{cityOptions.map((c) => <option key={c} value={c}>{c}</option>)}</select>{fieldErrors.city && <p className="error">{fieldErrors.city}</p>}</div>
+            <StateCityFields
+              stateValue={form.state}
+              cityValue={form.city}
+              onStateChange={(value) => onChange('state', value)}
+              onCityChange={(value) => onChange('city', value)}
+              required
+              stateError={fieldErrors.state}
+              cityError={fieldErrors.city}
+            />
           </div>
           <div className="form-row form-row-3">
             <div className="field"><label>CEP</label><input value={form.zip_code} onChange={(e) => onChange('zip_code', e.target.value)} required />{fieldErrors.zip_code && <p className="error">{fieldErrors.zip_code}</p>}</div>
@@ -139,6 +157,7 @@ export function UnidadeSocialPage() {
     </>
   )
 }
+
 
 
 

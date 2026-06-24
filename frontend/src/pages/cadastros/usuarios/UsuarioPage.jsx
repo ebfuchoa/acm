@@ -1,7 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { api, apiRaw } from '../../../api/client'
 import { CadastroListView } from '../../../components/CadastroListView'
-import { STATES, CITIES_BY_STATE } from '../../../data/brLocations'
 import { brToIsoDate, isoToBrDate, maskDateBr } from '../../../utils/dateBr'
 import { maskCurrencyBr, maskTime, parseCurrencyBr } from '../../../utils/formattersBr'
 import { getAuth } from '../../../auth'
@@ -128,7 +127,6 @@ const maskNis = (v) => { const d = v.replace(/\D/g, '').slice(0, 11); if (d.leng
 const normalizeToken = (v) => String(v ?? '')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
-  .replace(/Ã/g, '')
   .toLowerCase()
   .trim()
 const personName = (t) => /^[\p{L}\s.'-]+$/u.test(t)
@@ -156,7 +154,25 @@ export function UsuarioPage() {
   })
   const [composicaoEditIndex, setComposicaoEditIndex] = useState(null)
   const [isComposicaoModalOpen, setIsComposicaoModalOpen] = useState(false)
-  const citiesResponsible = useMemo(() => CITIES_BY_STATE[form.responsible_state] || [], [form.responsible_state])
+
+  useEffect(() => {
+    function showList() {
+      setMode('list')
+      setEditingId(null)
+      setIsReadOnly(false)
+      setForm(emptyForm)
+      setTab(0)
+      setFieldErrors({})
+      setSubmitAttempted(false)
+      setComposicaoDraft({ nome: '', parentesco: '', sexo: '', idade: '', naturalidade: '', estado_civil: '', escolaridade: '' })
+      setComposicaoEditIndex(null)
+      setIsComposicaoModalOpen(false)
+      setError('')
+      setMessage('')
+    }
+    window.addEventListener('usuarios:list', showList)
+    return () => window.removeEventListener('usuarios:list', showList)
+  }, [])
 
   async function loadUsers() { try { setUsers(await api(`/usuarios?status=${encodeURIComponent(statusFilter)}`)); setError('') } catch (err) { setError(err.message) } }
   useEffect(() => { loadUsers() }, [statusFilter])
@@ -527,7 +543,7 @@ export function UsuarioPage() {
       <div className="tabs tabs-highlight">{tabs.map((t, i) => <button key={t} type="button" className={`tab-btn tab-highlight-btn ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>)}</div>
       <form onSubmit={save} className={`card ${submitAttempted ? 'was-validated' : ''}`} noValidate>
         {tab === 0 && <IdentificacaoTab form={form} isReadOnly={isReadOnly} onChange={onChange} fieldErrors={fieldErrors} />}
-        {tab === 1 && <ResponsavelTab form={form} isReadOnly={isReadOnly} onChange={onChange} STATES={STATES} citiesResponsible={citiesResponsible} fieldErrors={fieldErrors} />}
+        {tab === 1 && <ResponsavelTab form={form} isReadOnly={isReadOnly} onChange={onChange} fieldErrors={fieldErrors} />}
         {tab === 2 && <EnderecoResidencialTab form={form} isReadOnly={isReadOnly} onChange={onChange} fieldErrors={fieldErrors} />}
         {tab === 3 && <EscolaridadeTab form={form} isReadOnly={isReadOnly} onChange={onChange} fieldErrors={fieldErrors} />}
         {tab === 6 && <SaudeTab form={form} isReadOnly={isReadOnly} onChangeSaude={onChangeSaude} />}
@@ -564,8 +580,8 @@ export function UsuarioPage() {
       searchTerm={search}
       onSearchChange={setSearch}
       renderAfterSearch={() => (
-        <div className="field" style={{ minWidth: 220 }}>
-          <label>Status</label>
+        <div className="search-filter-field usuarios-status-filter">
+          <label>STATUS</label>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="ativo">Ativo</option>
             <option value="inativo">Inativo</option>
@@ -650,6 +666,7 @@ export function UsuarioPage() {
     />
   </>
 }
+
 
 
 

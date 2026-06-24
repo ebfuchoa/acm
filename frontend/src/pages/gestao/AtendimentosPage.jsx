@@ -255,11 +255,11 @@ export function AtendimentosPage() {
       <div className="card">
         <div className="form-row atendimento-filtros-row">
           <div className="field">
-            <label>Nome</label>
+            <label>NOME</label>
             <input value={nomeFilter} onChange={(event) => setNomeFilter(event.target.value)} />
           </div>
           <div className="field">
-            <DatePickerBr label="Data do Atendimento" value={dataFilter} onChange={setDataFilter} />
+            <DatePickerBr label="DATA DO ATENDIMENTO" value={dataFilter} onChange={setDataFilter} />
           </div>
         </div>
 

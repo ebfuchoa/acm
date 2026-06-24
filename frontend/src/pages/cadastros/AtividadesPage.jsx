@@ -17,7 +17,7 @@ const columns = [
   { key: 'name', label: 'Nome' },
   { key: 'group_name', label: 'Grupo' },
   { key: 'dias_semana_label', label: 'Dias da Semana' },
-  { key: 'description', label: 'Descricao' },
+  { key: 'description', label: 'Descrição' },
 ]
 
 export function AtividadesPage() {
@@ -38,6 +38,20 @@ export function AtividadesPage() {
   const [fieldErrors, setFieldErrors] = useState({})
   const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false)
   const groupDropdownRef = useRef(null)
+
+  useEffect(() => {
+    function showList() {
+      setMode('list')
+      setEditingId(null)
+      setForm(initialForm)
+      setFieldErrors({})
+      setError('')
+      setMessage('')
+      setIsGroupDropdownOpen(false)
+    }
+    window.addEventListener('atividades:list', showList)
+    return () => window.removeEventListener('atividades:list', showList)
+  }, [])
 
   useEffect(() => {
     function handleOutsideClick(event) {
@@ -345,7 +359,7 @@ export function AtividadesPage() {
             {fieldErrors.dias_semana && <p className="error">{fieldErrors.dias_semana}</p>}
           </div>
           <div className="field">
-            <label>Descricao</label>
+            <label>Descrição</label>
             <textarea
               value={form.description}
               rows={6}

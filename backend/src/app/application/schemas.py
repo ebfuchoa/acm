@@ -64,7 +64,7 @@ class UnitCreate(BaseSchema):
     def strip_and_require_content(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("Campo obrigatÃ³rio.")
+            raise ValueError("Campo obrigatório.")
         return cleaned
 
     @field_validator("state")
@@ -77,7 +77,7 @@ class UnitCreate(BaseSchema):
     def validate_email_format(cls, value: str) -> str:
         cleaned = value.strip()
         if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", cleaned):
-            raise ValueError("E-mail invÃ¡lido.")
+            raise ValueError("E-mail inválido.")
         return cleaned
 
 
@@ -87,6 +87,159 @@ class UnitRead(UnitCreate):
 
 class UnitUpdate(UnitCreate):
     pass
+
+
+class UnitManagementRead(BaseSchema):
+    id: int
+    name: str
+    city: str | None = None
+    state: str | None = None
+    status: str | None = None
+    logo_path: str | None = None
+
+
+class DonationCatalogCreate(BaseSchema):
+    description: str = Field(min_length=1, max_length=150)
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Informe a descrição.")
+        return cleaned
+
+
+class DonationCatalogUpdate(DonationCatalogCreate):
+    pass
+
+
+class DonationCatalogRead(BaseSchema):
+    id: int
+    description: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    created_by: int | None = None
+    updated_by: int | None = None
+
+
+class DonationCatalogListResponse(BaseSchema):
+    items: list[DonationCatalogRead]
+    total: int
+    page: int
+    page_size: int
+
+
+def _digits_only(value: str | None) -> str:
+    return re.sub(r"\D", "", value or "")
+
+
+def _is_valid_cpf(value: str) -> bool:
+    digits = _digits_only(value)
+    if len(digits) != 11 or digits == digits[0] * 11:
+        return False
+    total = sum(int(digits[i]) * (10 - i) for i in range(9))
+    check = (total * 10) % 11
+    if check == 10:
+        check = 0
+    if check != int(digits[9]):
+        return False
+    total = sum(int(digits[i]) * (11 - i) for i in range(10))
+    check = (total * 10) % 11
+    if check == 10:
+        check = 0
+    return check == int(digits[10])
+
+
+def _is_valid_cnpj(value: str) -> bool:
+    digits = _digits_only(value)
+    if len(digits) != 14 or digits == digits[0] * 14:
+        return False
+
+    def calc_digit(base: str, weights: list[int]) -> str:
+        total = sum(int(number) * weight for number, weight in zip(base, weights))
+        remainder = total % 11
+        return "0" if remainder < 2 else str(11 - remainder)
+
+    first = calc_digit(digits[:12], [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+    second = calc_digit(digits[:12] + first, [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2])
+    return digits[-2:] == first + second
+
+
+class DonationReceiptBase(BaseSchema):
+    donation_catalog_id: int
+    donation_date: date
+    item_ns: int | None = Field(default=None, gt=0)
+    quilograma_kg: float | None = Field(default=None, gt=0)
+    description: str = Field(min_length=1, max_length=1000)
+    donor_name: str = Field(min_length=1, max_length=150)
+    donor_type: str | None = None
+    cpf: str | None = None
+    cnpj: str | None = None
+
+    @field_validator("description", "donor_name")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Campo obrigatório.")
+        return cleaned
+
+    @field_validator("donor_type")
+    @classmethod
+    def validate_donor_type(cls, value: str | None) -> str | None:
+        cleaned = (value or "").strip()
+        if not cleaned:
+            return None
+        if cleaned not in {"Pessoa Física", "Pessoa Jurídica"}:
+            raise ValueError("Tipo de doador inválido.")
+        return cleaned
+
+    @field_validator("cpf")
+    @classmethod
+    def validate_cpf(cls, value: str | None) -> str | None:
+        cleaned = (value or "").strip()
+        if not cleaned:
+            return None
+        if not _is_valid_cpf(cleaned):
+            raise ValueError("CPF inválido.")
+        return cleaned
+
+    @field_validator("cnpj")
+    @classmethod
+    def validate_cnpj(cls, value: str | None) -> str | None:
+        cleaned = (value or "").strip()
+        if not cleaned:
+            return None
+        if not _is_valid_cnpj(cleaned):
+            raise ValueError("CNPJ inválido.")
+        return cleaned
+
+
+class DonationReceiptCreate(DonationReceiptBase):
+    pass
+
+
+class DonationReceiptUpdate(DonationReceiptBase):
+    pass
+
+
+class DonationReceiptRead(DonationReceiptBase):
+    id: int
+    donation_catalog_description: str | None = None
+    status: str
+    is_active: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    created_by: int | None = None
+    updated_by: int | None = None
+
+
+class DonationReceiptListResponse(BaseSchema):
+    items: list[DonationReceiptRead]
+    total: int
+    page: int
+    page_size: int
 
 
 class UserCreate(BaseSchema):
@@ -154,9 +307,9 @@ class UserCreate(BaseSchema):
             return value
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("Campo obrigatÃ³rio.")
+            raise ValueError("Campo obrigatório.")
         if not all(ch.isalpha() or ch in {" ", "'", "-"} for ch in cleaned):
-            raise ValueError("Use apenas letras e caracteres vÃ¡lidos de nome.")
+            raise ValueError("Use apenas letras e caracteres válidos de nome.")
         return cleaned
 
     @field_validator("birth_place", "responsible_birth_place")
@@ -164,9 +317,9 @@ class UserCreate(BaseSchema):
     def validate_place_like_fields(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("Campo obrigatÃ³rio.")
+            raise ValueError("Campo obrigatório.")
         if not all(ch.isalpha() or ch in {" ", "'", "-", "/", "."} for ch in cleaned):
-            raise ValueError("Use apenas letras e caracteres vÃ¡lidos de localidade.")
+            raise ValueError("Use apenas letras e caracteres válidos de localidade.")
         return cleaned
 
     @field_validator("gender")
@@ -203,7 +356,7 @@ class UserCreate(BaseSchema):
     def validate_shift(cls, value: str) -> str:
         cleaned = unicodedata.normalize("NFKD", value.strip()).encode("ascii", "ignore").decode("ascii").lower()
         if cleaned not in {"manha", "tarde"}:
-            raise ValueError("Turno deve ser ManhÃ£ ou Tarde.")
+            raise ValueError("Turno deve ser Manhã ou Tarde.")
         return "Manhã" if cleaned == "manha" else "Tarde"
 
     @field_validator("responsible_rg")
@@ -227,7 +380,7 @@ class UserCreate(BaseSchema):
             raise ValueError("CPF deve estar no formato 000.000.000-00.")
         digits = re.sub(r"\D", "", cleaned)
         if len(digits) != 11 or digits == digits[0] * 11:
-            raise ValueError("CPF invÃ¡lido.")
+            raise ValueError("CPF inválido.")
         sum1 = sum(int(digits[i]) * (10 - i) for i in range(9))
         d1 = (sum1 * 10) % 11
         d1 = 0 if d1 == 10 else d1
@@ -235,7 +388,7 @@ class UserCreate(BaseSchema):
         d2 = (sum2 * 10) % 11
         d2 = 0 if d2 == 10 else d2
         if d1 != int(digits[9]) or d2 != int(digits[10]):
-            raise ValueError("CPF invÃ¡lido.")
+            raise ValueError("CPF inválido.")
         return cleaned
 
     @field_validator("responsible_marital_status")
@@ -259,7 +412,7 @@ class UserCreate(BaseSchema):
     def validate_yes_no(cls, value: str) -> str:
         cleaned = unicodedata.normalize("NFKD", value.strip()).encode("ascii", "ignore").decode("ascii").lower()
         if cleaned not in {"sim", "nao"}:
-            raise ValueError("Valor deve ser Sim ou NÃ£o.")
+            raise ValueError("Valor deve ser Sim ou Não.")
         return "Não" if cleaned == "nao" else "Sim"
 
     @field_validator("school_type")
@@ -267,7 +420,7 @@ class UserCreate(BaseSchema):
     def validate_school_type(cls, value: str) -> str:
         cleaned = value.strip().lower()
         if cleaned not in {"municipal", "estadual", "particular"}:
-            raise ValueError("Tipo da escola invÃ¡lido.")
+            raise ValueError("Tipo da escola inválido.")
         return cleaned.capitalize()
 
     @field_validator("responsible_schedule", "school_schedule")
@@ -279,14 +432,14 @@ class UserCreate(BaseSchema):
         if not cleaned:
             return None
         if not re.match(r"^([01]\d|2[0-3]):[0-5]\d$", cleaned):
-            raise ValueError("HorÃ¡rio deve estar no formato HH:MM.")
+            raise ValueError("Horário deve estar no formato HH:MM.")
         return cleaned
 
     @field_validator("birth_date")
     @classmethod
     def validate_birth_date(cls, value: date) -> date:
         if value > date.today():
-            raise ValueError("Data de nascimento nÃ£o pode estar no futuro.")
+            raise ValueError("Data de nascimento não pode estar no futuro.")
         return value
 
     @field_validator("age")
@@ -300,7 +453,7 @@ class UserCreate(BaseSchema):
             (today.month, today.day) < (birth_date.month, birth_date.day)
         )
         if value != calculated_age:
-            raise ValueError("Idade deve ser compatÃ­vel com a data de nascimento.")
+            raise ValueError("Idade deve ser compatível com a data de nascimento.")
         return value
 
     @field_validator("school_scholarship_percentage")
@@ -356,7 +509,7 @@ class ComposicaoFamiliarCreate(BaseSchema):
     def trim_required_composicao(cls, value: str) -> str:
         cleaned = value.strip()
         if not cleaned:
-            raise ValueError("Campo obrigatÃ³rio.")
+            raise ValueError("Campo obrigatório.")
         return cleaned
 
     @field_validator("parentesco")
@@ -383,7 +536,7 @@ class ComposicaoFamiliarCreate(BaseSchema):
             "avoa": "Avó"
         }
         if cleaned not in allowed:
-            raise ValueError("Parentesco invÃ¡lido.")
+            raise ValueError("Parentesco inválido.")
         return allowed[cleaned]
 
     @field_validator("sexo")
@@ -434,7 +587,7 @@ class SituacaoHabitacionalCreate(BaseSchema):
         if value is None:
             return None
         if value < 0:
-            raise ValueError("Valor nÃ£o pode ser negativo.")
+            raise ValueError("Valor não pode ser negativo.")
         return value
 
 
@@ -906,9 +1059,6 @@ class ParticipantRead(ParticipantCreate):
     id: int
     status: str
     current_data: dict
-
-
-
 
 
 

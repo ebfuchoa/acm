@@ -801,6 +801,50 @@ class UserSocialUnit(Base):
     social_unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
 
 
+class DonationCatalog(Base):
+    __tablename__ = "catalogo_doacao"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    description: Mapped[str] = mapped_column("descricao", String(150))
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+    created_by: Mapped[int | None] = mapped_column("created_by", ForeignKey("colaborador.id"), nullable=True)
+    updated_by: Mapped[int | None] = mapped_column("updated_by", ForeignKey("colaborador.id"), nullable=True)
+
+
+class DonationReceipt(Base):
+    __tablename__ = "doacao"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    donation_catalog_id: Mapped[int] = mapped_column("catalogo_doacao_id", ForeignKey("catalogo_doacao.id"))
+    donation_date: Mapped[date] = mapped_column("data_doacao", Date)
+    item_ns: Mapped[int | None] = mapped_column("item_ns", Integer, nullable=True)
+    quilograma_kg: Mapped[float | None] = mapped_column("quilograma_kg", Numeric(12, 2), nullable=True)
+    description: Mapped[str] = mapped_column("descricao", Text)
+    donor_name: Mapped[str] = mapped_column("nome_doador", String(150))
+    donor_type: Mapped[str | None] = mapped_column("tipo_doador", String(20), nullable=True)
+    cpf: Mapped[str | None] = mapped_column("cpf", String(14), nullable=True)
+    cnpj: Mapped[str | None] = mapped_column("cnpj", String(18), nullable=True)
+    is_active: Mapped[bool] = mapped_column("ativo", Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+    created_by: Mapped[int | None] = mapped_column("created_by", ForeignKey("colaborador.id"), nullable=True)
+    updated_by: Mapped[int | None] = mapped_column("updated_by", ForeignKey("colaborador.id"), nullable=True)
+    donation_catalog: Mapped[DonationCatalog] = relationship("DonationCatalog")
+
+
 class Collaborator(Base):
     __tablename__ = "colaborador"
 

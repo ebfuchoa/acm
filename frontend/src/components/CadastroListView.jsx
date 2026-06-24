@@ -92,14 +92,14 @@ export function CadastroListView({
                 Anterior
               </button>
             )}
-            <span className="pagination-label">Pagina {page} de {totalPages}</span>
+            <span className="pagination-label">Página {page} de {totalPages}</span>
             {page < totalPages && (
               <button
                 type="button"
                 className="btn btn-ghost"
                 onClick={() => setPage((current) => current + 1)}
               >
-                Proxima
+                Próxima
               </button>
             )}
           </div>

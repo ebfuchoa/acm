@@ -70,11 +70,11 @@ export function CadastrosPage() {
         </form>
 
         <form onSubmit={createUser} className="card" id="usuario">
-          <h3>Novo UsuÃ¡rio</h3>
+          <h3>Novo Usuário</h3>
           <input placeholder="ID da unidade" value={userForm.unit_id} onChange={(e) => setUserForm({ ...userForm, unit_id: e.target.value })} required />
           <input placeholder="Nome" value={userForm.full_name} onChange={(e) => setUserForm({ ...userForm, full_name: e.target.value })} required />
           <input placeholder="Email" value={userForm.email} onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} required />
-          <button type="submit">Salvar UsuÃ¡rio</button>
+          <button type="submit">Salvar Usuário</button>
         </form>
 
         <form onSubmit={createActivity} className="card" id="atividades">
@@ -82,14 +82,14 @@ export function CadastrosPage() {
           <input placeholder="ID da unidade" value={activityForm.unit_id} onChange={(e) => setActivityForm({ ...activityForm, unit_id: e.target.value })} required />
           <input placeholder="Nome" value={activityForm.name} onChange={(e) => setActivityForm({ ...activityForm, name: e.target.value })} required />
           <input placeholder="Categoria" value={activityForm.category} onChange={(e) => setActivityForm({ ...activityForm, category: e.target.value })} required />
-          <input placeholder="HorÃ¡rio" value={activityForm.schedule} onChange={(e) => setActivityForm({ ...activityForm, schedule: maskTime(e.target.value) })} maxLength={5} required />
+          <input placeholder="Horário" value={activityForm.schedule} onChange={(e) => setActivityForm({ ...activityForm, schedule: maskTime(e.target.value) })} maxLength={5} required />
           <button type="submit">Salvar Atividade</button>
         </form>
       </div>
 
       <div className="grid">
         <article className="card"><h3>Unidades</h3>{units.map((x) => <p key={x.id}>{x.id} - {x.name}</p>)}</article>
-        <article className="card"><h3>UsuÃ¡rios</h3>{users.map((x) => <p key={x.id}>{x.full_name} ({x.status})</p>)}</article>
+        <article className="card"><h3>Usuários</h3>{users.map((x) => <p key={x.id}>{x.full_name} ({x.status})</p>)}</article>
         <article className="card"><h3>Atividades</h3>{activities.map((x) => <p key={x.id}>{x.name} - {x.schedule}</p>)}</article>
       </div>
     </section>
