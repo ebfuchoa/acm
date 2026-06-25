@@ -656,6 +656,7 @@ class DailyActivityRecord(Base):
     start_time: Mapped[str] = mapped_column("horario_inicio", String(5))
     end_time: Mapped[str] = mapped_column("horario_fim", String(5))
     educator_id: Mapped[int] = mapped_column("educadora_id", ForeignKey("colaborador.id"))
+    unit_id: Mapped[int | None] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"), nullable=True)
     activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividade.id"))
     group_id: Mapped[int | None] = mapped_column("grupo_id", ForeignKey("grupo.id"), nullable=True)
     description: Mapped[str | None] = mapped_column("descricao_realizada", Text, nullable=True)
@@ -672,6 +673,7 @@ class DailyActivityRecord(Base):
     updated_by: Mapped[int | None] = mapped_column("updated_by", ForeignKey("colaborador.id"), nullable=True)
 
     educator = relationship("Collaborator", foreign_keys=[educator_id])
+    unit = relationship("Unit")
     activity = relationship("Activity")
     group = relationship("Group")
 

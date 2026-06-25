@@ -388,24 +388,21 @@ def _donation_summary(db: Session, unit_id: int, start_date: date, end_date: dat
 
 def _activity_summary(db: Session, unit_id: int, start_date: date, end_date: date) -> dict:
     rows = db.execute(
-        select(models.Activity.category, func.count(func.distinct(func.concat(models.GroupAttendance.group_id, "-", models.GroupAttendance.attendance_date))))
-        .select_from(models.GroupAttendance)
-        .join(models.Group, models.Group.id == models.GroupAttendance.group_id)
-        .join(models.ActivityGroup, models.ActivityGroup.group_id == models.Group.id)
-        .join(models.Activity, models.Activity.id == models.ActivityGroup.activity_id)
+        select(models.Activity.name, func.count(models.DailyActivityRecord.id))
+        .select_from(models.DailyActivityRecord)
+        .join(models.Activity, models.Activity.id == models.DailyActivityRecord.activity_id)
         .where(
             and_(
-                models.Group.unit_id == unit_id,
-                models.GroupAttendance.attendance_date >= start_date,
-                models.GroupAttendance.attendance_date <= end_date,
+                models.DailyActivityRecord.unit_id == unit_id,
+                models.DailyActivityRecord.deleted_at.is_(None),
+                models.DailyActivityRecord.activity_date >= start_date,
+                models.DailyActivityRecord.activity_date <= end_date,
             )
         )
-        .group_by(models.Activity.category)
+        .group_by(models.Activity.name)
+        .order_by(models.Activity.name.asc())
     ).all()
-    counts = {category: 0 for category in ACTIVITY_CATEGORIES}
-    for category, total in rows:
-        counts[category or "Outras"] = int(total or 0)
-    items = [{"type": key, "quantity": value} for key, value in counts.items()]
+    items = [{"type": name or "Atividade não informada", "quantity": int(total or 0)} for name, total in rows]
     return {"items": items, "total": sum(item["quantity"] for item in items)}
 
 
@@ -471,6 +468,8 @@ def _serialize_daily_activity_record(record: models.DailyActivityRecord) -> dict
         "end_time": record.end_time,
         "educator_id": record.educator_id,
         "educator_name": record.educator.name if record.educator else None,
+        "unit_id": record.unit_id,
+        "unit_name": record.unit.name if record.unit else None,
         "activity_id": record.activity_id,
         "activity_name": record.activity.name if record.activity else None,
         "group_id": record.group_id,
@@ -485,12 +484,8 @@ def _get_daily_activity_record_scoped(db: Session, record_id: int, ctx: AuthCont
     record = db.get(models.DailyActivityRecord, record_id)
     if record is None or record.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Registro de atividade diária não encontrado.")
-    if not ctx.is_admin:
-        activity = db.get(models.Activity, record.activity_id)
-        enforce_unit_scope(ctx, activity.unit_id if activity else None)
-    elif ctx.social_unit_id is not None:
-        activity = db.get(models.Activity, record.activity_id)
-        enforce_unit_scope(ctx, activity.unit_id if activity else None)
+    if not ctx.is_admin or ctx.social_unit_id is not None:
+        enforce_unit_scope(ctx, record.unit_id)
     return record
 
 
@@ -528,12 +523,11 @@ def list_daily_activity_records(
     _require_daily_activity_record_access(ctx)
     query = (
         select(models.DailyActivityRecord)
-        .join(models.Activity, models.Activity.id == models.DailyActivityRecord.activity_id)
         .where(models.DailyActivityRecord.deleted_at.is_(None))
         .order_by(models.DailyActivityRecord.activity_date.desc(), models.DailyActivityRecord.id.desc())
     )
     if not ctx.is_admin or ctx.social_unit_id is not None:
-        query = query.where(models.Activity.unit_id == ctx.social_unit_id)
+        query = query.where(models.DailyActivityRecord.unit_id == ctx.social_unit_id)
     return [_serialize_daily_activity_record(record) for record in db.scalars(query).unique().all()]
 
 
@@ -574,6 +568,7 @@ def create_daily_activity_record(
         raise HTTPException(status_code=400, detail="Atividade não programada para a data selecionada.")
     if payload.group_id not in activity.group_ids:
         raise HTTPException(status_code=400, detail="Grupo não vinculado à atividade selecionada.")
+    record_unit_id = ctx.social_unit_id or activity.unit_id
     start_time, end_time = _daily_activity_period_times(payload.shift, payload.period)
     record = models.DailyActivityRecord(
         activity_date=payload.activity_date,
@@ -582,6 +577,7 @@ def create_daily_activity_record(
         start_time=start_time,
         end_time=end_time,
         educator_id=ctx.user_id,
+        unit_id=record_unit_id,
         activity_id=activity.id,
         group_id=payload.group_id,
         description=payload.description,
@@ -621,12 +617,14 @@ def update_daily_activity_record(
         raise HTTPException(status_code=400, detail="Atividade não programada para a data selecionada.")
     if payload.group_id not in activity.group_ids:
         raise HTTPException(status_code=400, detail="Grupo não vinculado à atividade selecionada.")
+    record_unit_id = ctx.social_unit_id or activity.unit_id
     start_time, end_time = _daily_activity_period_times(payload.shift, payload.period)
     record.activity_date = payload.activity_date
     record.shift = payload.shift
     record.period = payload.period
     record.start_time = start_time
     record.end_time = end_time
+    record.unit_id = record_unit_id
     record.activity_id = activity.id
     record.group_id = payload.group_id
     record.description = payload.description

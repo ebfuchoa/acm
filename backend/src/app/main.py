@@ -90,6 +90,33 @@ def on_startup() -> None:
             connection.execute(
                 text(
                     """
+                    ALTER TABLE registro_atividade_diaria
+                    ADD COLUMN IF NOT EXISTS unidade_social_id INTEGER REFERENCES unidade_social(id)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    UPDATE registro_atividade_diaria rad
+                    SET unidade_social_id = a.unidade_social_id
+                    FROM atividade a
+                    WHERE rad.atividade_id = a.id
+                      AND rad.unidade_social_id IS NULL
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_registro_atividade_diaria_unidade_social
+                    ON registro_atividade_diaria (unidade_social_id)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
                     CREATE INDEX IF NOT EXISTS ix_catalogo_doacao_descricao
                     ON catalogo_doacao (descricao)
                     """

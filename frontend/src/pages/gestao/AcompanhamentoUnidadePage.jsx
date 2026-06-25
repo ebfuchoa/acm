@@ -78,19 +78,25 @@ function BarChart({ items }) {
   )
 }
 
-function ActivityDonut({ items }) {
+const ACTIVITY_CHART_COLORS = ['#1b609b', '#ed0017', '#0d3f7a', '#7fa9cf', '#f48b98', '#3b82c4', '#b9d7ee']
+
+function ActivityPie({ items }) {
   const total = items.reduce((sum, item) => sum + numberValue(item.quantity), 0)
   let offset = 0
-  const colors = ['#1b609b', '#0d3f7a', '#ed0017', '#7fa9cf', '#f48b98']
   const background = items.length && total > 0
     ? `conic-gradient(${items.map((item, index) => {
       const start = offset
       const size = (numberValue(item.quantity) / total) * 100
       offset += size
-      return `${colors[index % colors.length]} ${start}% ${offset}%`
+      return `${ACTIVITY_CHART_COLORS[index % ACTIVITY_CHART_COLORS.length]} ${start}% ${offset}%`
     }).join(', ')})`
     : 'conic-gradient(#e8eef6 0% 100%)'
-  return <div className="followup-donut" style={{ background }}><span>{total}</span></div>
+  return (
+    <div className="followup-pie-wrap">
+      <div className="followup-pie" style={{ background }} aria-label={`Total de atividades: ${total}`} />
+      <span>Total: {total}</span>
+    </div>
+  )
 }
 
 function LineChart({ items }) {
@@ -258,11 +264,16 @@ export function AcompanhamentoUnidadePage() {
         <article className="card followup-panel">
           <h3>Atividades Realizadas no Mês</h3>
           <div className="followup-activity-layout">
-            <ActivityDonut items={activities} />
+            <ActivityPie items={activities} />
             <table className="followup-table">
               <thead><tr><th>Tipo de Atividade</th><th>Quantidade</th></tr></thead>
               <tbody>
-                {activities.map((item) => <tr key={item.type}><td>{item.type}</td><td>{item.quantity}</td></tr>)}
+                {activities.map((item, index) => (
+                  <tr key={item.type}>
+                    <td><span className="followup-color-dot" style={{ '--dot-color': ACTIVITY_CHART_COLORS[index % ACTIVITY_CHART_COLORS.length] }} />{item.type}</td>
+                    <td>{item.quantity}</td>
+                  </tr>
+                ))}
                 <tr><th>Total Geral</th><th>{data?.activities?.total || 0}</th></tr>
               </tbody>
             </table>

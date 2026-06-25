@@ -910,6 +910,8 @@ class DailyActivityRecordRead(BaseSchema):
     end_time: str
     educator_id: int
     educator_name: str | None = None
+    unit_id: int | None = None
+    unit_name: str | None = None
     activity_id: int
     activity_name: str | None = None
     group_id: int | None = None
