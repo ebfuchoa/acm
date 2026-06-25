@@ -81,7 +81,7 @@ function BarChart({ items }) {
 function ActivityDonut({ items }) {
   const total = items.reduce((sum, item) => sum + numberValue(item.quantity), 0)
   let offset = 0
-  const colors = ['#1fa878', '#266ddf', '#f5a623', '#7457d6', '#6b7c93']
+  const colors = ['#1b609b', '#0d3f7a', '#ed0017', '#7fa9cf', '#f48b98']
   const background = items.length && total > 0
     ? `conic-gradient(${items.map((item, index) => {
       const start = offset

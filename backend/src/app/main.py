@@ -82,6 +82,14 @@ def on_startup() -> None:
             connection.execute(
                 text(
                     """
+                    ALTER TABLE registro_atividade_diaria
+                    ADD COLUMN IF NOT EXISTS grupo_id INTEGER REFERENCES grupo(id)
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
                     CREATE INDEX IF NOT EXISTS ix_catalogo_doacao_descricao
                     ON catalogo_doacao (descricao)
                     """

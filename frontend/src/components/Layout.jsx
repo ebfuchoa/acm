@@ -22,6 +22,7 @@ export function Layout({ children }) {
   const canSeeActivities = Boolean(auth?.is_admin) || permissions.includes('activities.read')
   const canSeeGroups = Boolean(auth?.is_admin) || permissions.includes('groups.read')
   const canSeeAtendimentos = canManageAtendimentos
+  const canSeeDailyActivityRecord = Boolean(auth?.is_admin) || ['educador', 'educadora', 'administrador do sistema'].includes(profile)
   const canSeeUsuario = !isSecretariaAdministrativa
   const canSeeControle = !isSecretariaAdministrativa || canAccessUnitManagement
   const canSeeAcompanhamento = !isSecretariaAdministrativa
@@ -31,6 +32,7 @@ export function Layout({ children }) {
   const isCadastrosActive = currentPath.startsWith('/cadastros')
   const isControleActive = currentPath.startsWith('/classificacao-grupo')
     || currentPath.startsWith('/frequencia')
+    || currentPath.startsWith('/registro-atividades-diaria')
     || currentPath.startsWith('/atendimentos')
     || currentPath.startsWith('/recebimento-doacoes')
   const isAcompanhamentoActive = currentPath.startsWith('/participantes')
@@ -80,6 +82,7 @@ export function Layout({ children }) {
               <div className="sub-nav">
                 {!isSecretariaAdministrativa && <NavLink to="/classificacao-grupo" className="sub-nav-item">Classificação por Grupo</NavLink>}
                 {!isSecretariaAdministrativa && <NavLink to="/frequencia" className="sub-nav-item">Frequência</NavLink>}
+                {canSeeDailyActivityRecord && <NavLink to="/registro-atividades-diaria" className="sub-nav-item" onClick={() => openListView('registro-atividades-diaria')}>Registro de atividades diária</NavLink>}
                 {canSeeAtendimentos && <NavLink to="/atendimentos" className="sub-nav-item" onClick={() => openListView('atendimentos')}>Atendimento</NavLink>}
                 {canAccessUnitManagement && <NavLink to="/recebimento-doacoes" className="sub-nav-item" onClick={() => openListView('recebimento-doacoes')}>Recebimento de Doações</NavLink>}
               </div>

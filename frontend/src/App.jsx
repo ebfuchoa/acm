@@ -5,6 +5,7 @@ import { UnidadeSocialPage, UsuarioPage, AtividadesPage, GruposPage, InscricoesP
 import { AtendimentosPage, FrequenciaPage, RelatoriosPage, ParticipantesPage, AcompanhamentoUnidadePage } from './pages/gestao'
 import { ClassificacaoGrupoPage } from './pages/classificacao/ClassificacaoGrupoPage'
 import { RecebimentoDoacoesPage } from './pages/controle/RecebimentoDoacoesPage'
+import { RegistroAtividadesDiariaPage } from './pages/controle/RegistroAtividadesDiariaPage'
 import { GestaoUnidadeDetalhePage, GestaoUnidadesPage } from './pages/gestao-unidades'
 import { LoginPage } from './pages/auth'
 import { getAuth, isAuthenticated } from './auth'
@@ -25,6 +26,12 @@ function canAccessUnitFollowup() {
   return Boolean(auth?.is_admin) || ['coordenador', 'coordenadora', 'administrador do sistema'].includes(profile)
 }
 
+function canAccessDailyActivityRecord() {
+  const auth = getAuth()
+  const profile = normalizeProfile(auth?.profile)
+  return Boolean(auth?.is_admin) || ['educador', 'educadora', 'administrador do sistema'].includes(profile)
+}
+
 function UnitManagementRoute({ children }) {
   if (!canAccessUnitManagement()) return <Navigate to="/" replace />
   return children
@@ -32,6 +39,11 @@ function UnitManagementRoute({ children }) {
 
 function UnitFollowupRoute({ children }) {
   if (!canAccessUnitFollowup()) return <Navigate to="/" replace />
+  return children
+}
+
+function DailyActivityRecordRoute({ children }) {
+  if (!canAccessDailyActivityRecord()) return <Navigate to="/" replace />
   return children
 }
 
@@ -61,6 +73,7 @@ function ProtectedApp() {
         <Route path="/cadastros/catalogo-doacoes" element={<DonationCatalogRoute><CatalogoDoacoesPage /></DonationCatalogRoute>} />
         <Route path="/classificacao-grupo" element={<ClassificacaoGrupoPage />} />
         <Route path="/frequencia" element={<FrequenciaPage />} />
+        <Route path="/registro-atividades-diaria" element={<DailyActivityRecordRoute><RegistroAtividadesDiariaPage /></DailyActivityRecordRoute>} />
         <Route path="/recebimento-doacoes" element={<DonationReceiptRoute><RecebimentoDoacoesPage /></DonationReceiptRoute>} />
         <Route path="/atendimentos" element={<AtendimentosPage />} />
         <Route path="/relatorios" element={<RelatoriosPage />} />

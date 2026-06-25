@@ -844,7 +844,7 @@ class ActivityUpdate(BaseSchema):
 class ActivityRead(BaseSchema):
     id: int
     unit_id: int | None = None
-    group_id: int | None = None
+    group_id: int
     group_ids: list[int] = []
     dias_semana: list[str] = []
     name: str
@@ -855,6 +855,66 @@ class ActivityRead(BaseSchema):
     max_age: int
     capacity: int
     is_active: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class DailyActivityOption(BaseSchema):
+    id: int
+    name: str
+    description: str | None = None
+    category: str | None = None
+    schedule: str | None = None
+    groups: list[dict] = []
+
+
+class DailyActivityRecordCreate(BaseSchema):
+    activity_date: date
+    shift: str
+    period: str
+    activity_id: int
+    group_id: int | None = None
+    description: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("shift")
+    @classmethod
+    def validate_shift(cls, value: str) -> str:
+        cleaned = value.strip()
+        if cleaned not in {"Manhã", "Tarde"}:
+            raise ValueError("Turno inválido.")
+        return cleaned
+
+    @field_validator("period")
+    @classmethod
+    def validate_period(cls, value: str) -> str:
+        cleaned = value.strip()
+        if cleaned not in {"1", "2"}:
+            raise ValueError("Período inválido.")
+        return cleaned
+
+    @field_validator("description")
+    @classmethod
+    def normalize_record_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class DailyActivityRecordRead(BaseSchema):
+    id: int
+    activity_date: date
+    shift: str
+    period: str
+    start_time: str
+    end_time: str
+    educator_id: int
+    educator_name: str | None = None
+    activity_id: int
+    activity_name: str | None = None
+    group_id: int | None = None
+    group_name: str | None = None
+    description: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -1059,6 +1119,3 @@ class ParticipantRead(ParticipantCreate):
     id: int
     status: str
     current_data: dict
-
-
-

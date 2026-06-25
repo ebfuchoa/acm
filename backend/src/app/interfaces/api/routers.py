@@ -50,6 +50,18 @@ def _can_manage_atendimentos(ctx: AuthContext) -> bool:
     return profile in {"coordenador", "coordenadora", "tecnico"}
 
 
+def _can_manage_daily_activity_records(ctx: AuthContext) -> bool:
+    if ctx.is_admin:
+        return True
+    profile = unicodedata.normalize("NFKD", (ctx.profile or "").strip()).encode("ascii", "ignore").decode("ascii").lower()
+    return profile in {"educador", "educadora"}
+
+
+def _require_daily_activity_record_access(ctx: AuthContext) -> None:
+    if not _can_manage_daily_activity_records(ctx):
+        raise HTTPException(status_code=403, detail="Acesso negado para Registro de Atividades Diária.")
+
+
 def _can_access_unit_followup(ctx: AuthContext) -> bool:
     if ctx.is_admin:
         return True
@@ -224,6 +236,23 @@ def _apply_donation_receipt_payload(
 
 MONTH_LABELS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"]
 ACTIVITY_CATEGORIES = ["Socioeducativas", "Oficinas de Esporte", "Vivência Sociocultural", "Oficinas Artísticas"]
+DAILY_ACTIVITY_PERIODS = {
+    "Manhã": {
+        "1": ("08:00", "09:30"),
+        "2": ("09:30", "11:00"),
+    },
+    "Tarde": {
+        "1": ("13:30", "15:00"),
+        "2": ("15:00", "16:30"),
+    },
+}
+WEEKDAY_KEYS = {
+    0: "segunda",
+    1: "terca",
+    2: "quarta",
+    3: "quinta",
+    4: "sexta",
+}
 
 
 def _month_bounds(year: int, month: int) -> tuple[date, date]:
@@ -396,6 +425,228 @@ def _monthly_series(db: Session, unit_id: int, year: int) -> list[dict]:
             }
         )
     return series
+
+
+def _daily_activity_period_times(shift: str, period: str) -> tuple[str, str]:
+    try:
+        return DAILY_ACTIVITY_PERIODS[shift][period]
+    except KeyError:
+        raise HTTPException(status_code=400, detail="Turno ou período inválido.")
+
+
+def _daily_activity_weekday(activity_date: date) -> str:
+    weekday = WEEKDAY_KEYS.get(activity_date.weekday())
+    if weekday is None:
+        raise HTTPException(status_code=400, detail="Selecione uma data entre segunda-feira e sexta-feira.")
+    return weekday
+
+
+def _serialize_daily_activity_option(activity: models.Activity, db: Session) -> dict:
+    group_ids = activity.group_ids
+    groups = []
+    if group_ids:
+        group_rows = db.scalars(
+            select(models.Group)
+            .where(models.Group.id.in_(group_ids))
+            .order_by(models.Group.name.asc())
+        ).all()
+        groups = [{"id": group.id, "name": group.name} for group in group_rows]
+    return {
+        "id": activity.id,
+        "name": activity.name,
+        "description": activity.description,
+        "category": activity.category,
+        "schedule": activity.schedule,
+        "groups": groups,
+    }
+
+
+def _serialize_daily_activity_record(record: models.DailyActivityRecord) -> dict:
+    return {
+        "id": record.id,
+        "activity_date": record.activity_date,
+        "shift": record.shift,
+        "period": record.period,
+        "start_time": record.start_time,
+        "end_time": record.end_time,
+        "educator_id": record.educator_id,
+        "educator_name": record.educator.name if record.educator else None,
+        "activity_id": record.activity_id,
+        "activity_name": record.activity.name if record.activity else None,
+        "group_id": record.group_id,
+        "group_name": record.group.name if record.group else None,
+        "description": record.description,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def _get_daily_activity_record_scoped(db: Session, record_id: int, ctx: AuthContext) -> models.DailyActivityRecord:
+    record = db.get(models.DailyActivityRecord, record_id)
+    if record is None or record.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Registro de atividade diária não encontrado.")
+    if not ctx.is_admin:
+        activity = db.get(models.Activity, record.activity_id)
+        enforce_unit_scope(ctx, activity.unit_id if activity else None)
+    elif ctx.social_unit_id is not None:
+        activity = db.get(models.Activity, record.activity_id)
+        enforce_unit_scope(ctx, activity.unit_id if activity else None)
+    return record
+
+
+@router.get('/registro-atividades-diarias/atividades', response_model=list[schemas.DailyActivityOption])
+def list_daily_activity_options(
+    data_atividade: date,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_daily_activity_record_access(ctx)
+    weekday = _daily_activity_weekday(data_atividade)
+    query = (
+        select(models.Activity)
+        .join(models.ActivityWeekday, models.ActivityWeekday.activity_id == models.Activity.id)
+        .where(
+            and_(
+                models.Activity.is_active.is_(True),
+                models.ActivityWeekday.weekday == weekday,
+            )
+        )
+        .order_by(models.Activity.name.asc())
+    )
+    if not ctx.is_admin:
+        query = query.where(models.Activity.unit_id == ctx.social_unit_id)
+    elif ctx.social_unit_id is not None:
+        query = query.where(models.Activity.unit_id == ctx.social_unit_id)
+    return [_serialize_daily_activity_option(activity, db) for activity in db.scalars(query).unique().all()]
+
+
+@router.get('/registro-atividades-diarias', response_model=list[schemas.DailyActivityRecordRead])
+def list_daily_activity_records(
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_daily_activity_record_access(ctx)
+    query = (
+        select(models.DailyActivityRecord)
+        .join(models.Activity, models.Activity.id == models.DailyActivityRecord.activity_id)
+        .where(models.DailyActivityRecord.deleted_at.is_(None))
+        .order_by(models.DailyActivityRecord.activity_date.desc(), models.DailyActivityRecord.id.desc())
+    )
+    if not ctx.is_admin or ctx.social_unit_id is not None:
+        query = query.where(models.Activity.unit_id == ctx.social_unit_id)
+    return [_serialize_daily_activity_record(record) for record in db.scalars(query).unique().all()]
+
+
+@router.get('/registro-atividades-diarias/{record_id}', response_model=schemas.DailyActivityRecordRead)
+def get_daily_activity_record(
+    record_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_daily_activity_record_access(ctx)
+    return _serialize_daily_activity_record(_get_daily_activity_record_scoped(db, record_id, ctx))
+
+
+@router.post('/registro-atividades-diarias', response_model=schemas.DailyActivityRecordRead)
+def create_daily_activity_record(
+    payload: schemas.DailyActivityRecordCreate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_daily_activity_record_access(ctx)
+    weekday = _daily_activity_weekday(payload.activity_date)
+    activity = db.get(models.Activity, payload.activity_id)
+    if activity is None or not activity.is_active:
+        raise HTTPException(status_code=404, detail="Atividade não encontrada.")
+    if not ctx.is_admin:
+        enforce_unit_scope(ctx, activity.unit_id)
+    elif ctx.social_unit_id is not None:
+        enforce_unit_scope(ctx, activity.unit_id)
+    has_weekday = db.scalar(
+        select(models.ActivityWeekday.id).where(
+            and_(
+                models.ActivityWeekday.activity_id == activity.id,
+                models.ActivityWeekday.weekday == weekday,
+            )
+        )
+    )
+    if has_weekday is None:
+        raise HTTPException(status_code=400, detail="Atividade não programada para a data selecionada.")
+    if payload.group_id not in activity.group_ids:
+        raise HTTPException(status_code=400, detail="Grupo não vinculado à atividade selecionada.")
+    start_time, end_time = _daily_activity_period_times(payload.shift, payload.period)
+    record = models.DailyActivityRecord(
+        activity_date=payload.activity_date,
+        shift=payload.shift,
+        period=payload.period,
+        start_time=start_time,
+        end_time=end_time,
+        educator_id=ctx.user_id,
+        activity_id=activity.id,
+        group_id=payload.group_id,
+        description=payload.description,
+        created_by=ctx.user_id,
+        updated_by=ctx.user_id,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return _serialize_daily_activity_record(record)
+
+
+@router.put('/registro-atividades-diarias/{record_id}', response_model=schemas.DailyActivityRecordRead)
+def update_daily_activity_record(
+    record_id: int,
+    payload: schemas.DailyActivityRecordCreate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_daily_activity_record_access(ctx)
+    record = _get_daily_activity_record_scoped(db, record_id, ctx)
+    weekday = _daily_activity_weekday(payload.activity_date)
+    activity = db.get(models.Activity, payload.activity_id)
+    if activity is None or not activity.is_active:
+        raise HTTPException(status_code=404, detail="Atividade não encontrada.")
+    if not ctx.is_admin or ctx.social_unit_id is not None:
+        enforce_unit_scope(ctx, activity.unit_id)
+    has_weekday = db.scalar(
+        select(models.ActivityWeekday.id).where(
+            and_(
+                models.ActivityWeekday.activity_id == activity.id,
+                models.ActivityWeekday.weekday == weekday,
+            )
+        )
+    )
+    if has_weekday is None:
+        raise HTTPException(status_code=400, detail="Atividade não programada para a data selecionada.")
+    if payload.group_id not in activity.group_ids:
+        raise HTTPException(status_code=400, detail="Grupo não vinculado à atividade selecionada.")
+    start_time, end_time = _daily_activity_period_times(payload.shift, payload.period)
+    record.activity_date = payload.activity_date
+    record.shift = payload.shift
+    record.period = payload.period
+    record.start_time = start_time
+    record.end_time = end_time
+    record.activity_id = activity.id
+    record.group_id = payload.group_id
+    record.description = payload.description
+    record.updated_by = ctx.user_id
+    db.commit()
+    db.refresh(record)
+    return _serialize_daily_activity_record(record)
+
+
+@router.delete('/registro-atividades-diarias/{record_id}', status_code=204)
+def delete_daily_activity_record(
+    record_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_daily_activity_record_access(ctx)
+    record = _get_daily_activity_record_scoped(db, record_id, ctx)
+    record.deleted_at = datetime.utcnow()
+    record.updated_by = ctx.user_id
+    db.commit()
 
 
 @router.get('/acompanhamento/dashboard')

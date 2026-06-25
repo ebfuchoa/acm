@@ -646,6 +646,36 @@ class ActivityWeekday(Base):
     activity = relationship("Activity", back_populates="activity_weekdays")
 
 
+class DailyActivityRecord(Base):
+    __tablename__ = "registro_atividade_diaria"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    activity_date: Mapped[date] = mapped_column("data_atividade", Date)
+    shift: Mapped[str] = mapped_column("turno", String(20))
+    period: Mapped[str] = mapped_column("periodo", String(20))
+    start_time: Mapped[str] = mapped_column("horario_inicio", String(5))
+    end_time: Mapped[str] = mapped_column("horario_fim", String(5))
+    educator_id: Mapped[int] = mapped_column("educadora_id", ForeignKey("colaborador.id"))
+    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividade.id"))
+    group_id: Mapped[int | None] = mapped_column("grupo_id", ForeignKey("grupo.id"), nullable=True)
+    description: Mapped[str | None] = mapped_column("descricao_realizada", Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column("deleted_at", DateTime, nullable=True)
+    created_by: Mapped[int | None] = mapped_column("created_by", ForeignKey("colaborador.id"), nullable=True)
+    updated_by: Mapped[int | None] = mapped_column("updated_by", ForeignKey("colaborador.id"), nullable=True)
+
+    educator = relationship("Collaborator", foreign_keys=[educator_id])
+    activity = relationship("Activity")
+    group = relationship("Group")
+
+
 class Enrollment(Base):
     __tablename__ = "inscricao"
     __table_args__ = (UniqueConstraint("usuario_id", "atividade_id", name="uq_usuario_atividade"),)
