@@ -335,6 +335,31 @@ def _attendance_count(db: Session, unit_id: int, start_date: date, end_date: dat
     ) or 0
 
 
+def _group_attendance_month_count(db: Session, unit_id: int, start_date: date, end_date: date) -> int:
+    distinct_records = (
+        select(
+            models.GroupAttendance.id,
+            models.GroupAttendance.user_id,
+            models.GroupAttendance.group_id,
+            models.GroupAttendance.attendance_date,
+            models.GroupAttendance.present,
+        )
+        .select_from(models.GroupAttendance)
+        .join(models.Group, models.Group.id == models.GroupAttendance.group_id)
+        .where(
+            and_(
+                models.Group.unit_id == unit_id,
+                models.GroupAttendance.attendance_date >= start_date,
+                models.GroupAttendance.attendance_date <= end_date,
+                models.GroupAttendance.present.is_(True),
+            )
+        )
+        .distinct()
+        .subquery()
+    )
+    return db.scalar(select(func.count()).select_from(distinct_records)) or 0
+
+
 def _donation_base_query(unit_id: int, start_date: date, end_date: date):
     return (
         select(models.DonationReceipt)
@@ -673,6 +698,7 @@ def get_unit_followup_dashboard(
     children_active = _age_count(db, unit_id, 6, 11)
     teens_active = _age_count(db, unit_id, 12, 15)
     attendance_month = _attendance_count(db, unit_id, start_date, end_date)
+    group_attendance_month = _group_attendance_month_count(db, unit_id, start_date, end_date)
     attendance_year = _attendance_count(db, unit_id, year_start, year_end)
     donations = _donation_summary(db, unit_id, start_date, end_date)
     activities = _activity_summary(db, unit_id, start_date, end_date)
@@ -707,6 +733,7 @@ def get_unit_followup_dashboard(
             "children_active": children_active,
             "teens_active": teens_active,
             "attendance_month": attendance_month,
+            "group_attendance_month": group_attendance_month,
             "families_in_meetings": 0,
             "donations_received": donations["total_donations"],
         },

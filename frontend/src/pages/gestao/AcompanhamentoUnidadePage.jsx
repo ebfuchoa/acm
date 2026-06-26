@@ -78,7 +78,7 @@ function BarChart({ items }) {
   )
 }
 
-const ACTIVITY_CHART_COLORS = ['#1b609b', '#ed0017', '#0d3f7a', '#7fa9cf', '#f48b98', '#3b82c4', '#b9d7ee']
+const ACTIVITY_CHART_COLORS = ['#1b609b', '#38a3a5', '#f4a261', '#7c6ee6', '#58b368', '#f6c85f', '#8ecae6']
 
 function ActivityPie({ items }) {
   const total = items.reduce((sum, item) => sum + numberValue(item.quantity), 0)
@@ -221,7 +221,8 @@ export function AcompanhamentoUnidadePage() {
         <div className="followup-stat-grid">
           <StatCard tone="green" title="Crianças Ativas" value={cards.children_active || 0} caption="6 a 11 anos" />
           <StatCard tone="purple" title="Adolescentes Ativos" value={cards.teens_active || 0} caption="12 a 15 anos" />
-          <StatCard tone="blue" title="Atendimentos no Mês" value={cards.attendance_month || 0} caption="Total de atendimentos" />
+          <StatCard tone="teal" title="Frequência" value={cards.group_attendance_month || 0} caption="Frequências registradas" />
+          <StatCard tone="blue" title="Atendimentos" value={cards.attendance_month || 0} caption="Total de atendimentos" />
           <StatCard tone="orange" title="Encontro com família" value={cards.families_in_meetings || 0} caption="Participantes" />
           <StatCard tone="teal" title="Doações Recebidas" value={cards.donations_received || 0} caption="Total de doações" />
         </div>
