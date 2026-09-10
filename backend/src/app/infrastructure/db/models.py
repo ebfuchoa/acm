@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import (
     JSON,
@@ -11,12 +11,13 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    Time,
     UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.domain.enums import AttendanceStatus, JustificationStatus, ReportStatus, UserMovementType, UserStatus
+from app.domain.enums import ReportStatus, UserMovementType, UserStatus
 from app.infrastructure.db.base import Base
 
 
@@ -687,17 +688,6 @@ class Enrollment(Base):
     activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividade.id"))
 
 
-class Attendance(Base):
-    __tablename__ = "frequencia"
-    __table_args__ = (UniqueConstraint("usuario_id", "atividade_id", "data_frequencia", name="uq_frequencia"),)
-
-    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id"))
-    activity_id: Mapped[int] = mapped_column("atividade_id", ForeignKey("atividade.id"))
-    attendance_date: Mapped[date] = mapped_column("data_frequencia", Date)
-    status: Mapped[AttendanceStatus] = mapped_column("status", Enum(AttendanceStatus))
-
-
 class GroupAttendance(Base):
     __tablename__ = "frequencia_grupo"
     __table_args__ = (
@@ -720,19 +710,31 @@ class GroupAttendance(Base):
     )
 
 
-class AbsenceJustification(Base):
-    __tablename__ = "justificativa_falta"
+class GroupAttendanceJustification(Base):
+    __tablename__ = "frequencia_justificativa_falta"
+    __table_args__ = (
+        UniqueConstraint(
+            "usuario_id",
+            "grupo_id",
+            "turno",
+            "semana_referencia",
+            name="uq_frequencia_justificativa_falta_semana",
+        ),
+    )
 
     id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
-    attendance_id: Mapped[int] = mapped_column("frequencia_id", ForeignKey("frequencia.id"), unique=True)
+    user_id: Mapped[int] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="CASCADE"))
+    group_id: Mapped[int] = mapped_column("grupo_id", ForeignKey("grupo.id", ondelete="CASCADE"))
+    shift: Mapped[str] = mapped_column("turno", String(20))
+    week_reference: Mapped[date] = mapped_column("semana_referencia", Date)
     reason: Mapped[str] = mapped_column("motivo", Text)
-    author_name: Mapped[str] = mapped_column("autor_nome", String(120))
-    justification_date: Mapped[date] = mapped_column("data_justificativa", Date)
-    attachment_url: Mapped[str | None] = mapped_column("url_anexo", String(255), nullable=True)
-    status: Mapped[JustificationStatus] = mapped_column(
-        "status",
-        Enum(JustificationStatus),
-        default=JustificationStatus.PENDING,
+    created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "atualizado_em",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
     )
 
 
@@ -897,3 +899,118 @@ class Collaborator(Base):
         server_default=func.now(),
         onupdate=datetime.utcnow,
     )
+
+
+class OccurrenceCategory(Base):
+    __tablename__ = "ocorrencia_categoria"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    name: Mapped[str] = mapped_column("nome", String(120), unique=True)
+    is_active: Mapped[bool] = mapped_column("ativo", Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "atualizado_em",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+
+
+class Occurrence(Base):
+    __tablename__ = "ocorrencia"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    number: Mapped[str] = mapped_column("numero", String(20), unique=True)
+    unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
+    occurrence_date: Mapped[date] = mapped_column("data_ocorrencia", Date)
+    occurrence_shift: Mapped[str] = mapped_column("turno", String(20), default="Manhã", server_default="Manhã")
+    location: Mapped[str] = mapped_column("local", String(80))
+    location_details: Mapped[str | None] = mapped_column("local_detalhe", String(150), nullable=True)
+    category_id: Mapped[int] = mapped_column("categoria_id", ForeignKey("ocorrencia_categoria.id"))
+    severity: Mapped[str] = mapped_column("gravidade", String(20))
+    description: Mapped[str] = mapped_column("descricao", Text)
+    actions_taken: Mapped[str | None] = mapped_column("providencias_tomadas", Text, nullable=True)
+    status: Mapped[str] = mapped_column("status", String(30), default="Aberta", server_default="Aberta")
+    resolution: Mapped[str | None] = mapped_column("resolucao", Text, nullable=True)
+    additional_notes: Mapped[str | None] = mapped_column("observacoes_adicionais", Text, nullable=True)
+    cancellation_reason: Mapped[str | None] = mapped_column("motivo_cancelamento", Text, nullable=True)
+    created_by: Mapped[int] = mapped_column("criado_por", ForeignKey("colaborador.id"))
+    updated_by: Mapped[int | None] = mapped_column("atualizado_por", ForeignKey("colaborador.id"), nullable=True)
+    resolved_by: Mapped[int | None] = mapped_column("resolvido_por", ForeignKey("colaborador.id"), nullable=True)
+    cancelled_by: Mapped[int | None] = mapped_column("cancelado_por", ForeignKey("colaborador.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "atualizado_em",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column("resolvido_em", DateTime, nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column("cancelado_em", DateTime, nullable=True)
+
+    unit = relationship("Unit")
+    category = relationship("OccurrenceCategory")
+    creator = relationship("Collaborator", foreign_keys=[created_by])
+    updater = relationship("Collaborator", foreign_keys=[updated_by])
+    resolver = relationship("Collaborator", foreign_keys=[resolved_by])
+    canceller = relationship("Collaborator", foreign_keys=[cancelled_by])
+    people = relationship("OccurrencePerson", back_populates="occurrence", cascade="all, delete-orphan")
+    external_services = relationship("OccurrenceExternalService", back_populates="occurrence", cascade="all, delete-orphan")
+    staff = relationship("OccurrenceStaff", back_populates="occurrence", cascade="all, delete-orphan")
+    history = relationship("OccurrenceHistory", back_populates="occurrence", cascade="all, delete-orphan")
+
+
+class OccurrencePerson(Base):
+    __tablename__ = "ocorrencia_pessoa"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column("ocorrencia_id", ForeignKey("ocorrencia.id", ondelete="CASCADE"))
+    person_type: Mapped[str] = mapped_column("tipo_pessoa", String(40))
+    user_id: Mapped[int | None] = mapped_column("usuario_id", ForeignKey("usuario.id", ondelete="SET NULL"), nullable=True)
+    person_name: Mapped[str | None] = mapped_column("nome_pessoa", String(200), nullable=True)
+    notes: Mapped[str | None] = mapped_column("observacao", Text, nullable=True)
+
+    occurrence = relationship("Occurrence", back_populates="people")
+    user = relationship("User")
+
+
+class OccurrenceExternalService(Base):
+    __tablename__ = "ocorrencia_servico_externo"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column("ocorrencia_id", ForeignKey("ocorrencia.id", ondelete="CASCADE"))
+    service_type: Mapped[str] = mapped_column("tipo_servico", String(80))
+    service_name: Mapped[str | None] = mapped_column("nome_servico", String(120), nullable=True)
+    called_at: Mapped[time | None] = mapped_column("horario_acionamento", Time, nullable=True)
+    protocol: Mapped[str | None] = mapped_column("protocolo", String(80), nullable=True)
+    notes: Mapped[str | None] = mapped_column("observacao", Text, nullable=True)
+
+    occurrence = relationship("Occurrence", back_populates="external_services")
+
+
+class OccurrenceStaff(Base):
+    __tablename__ = "ocorrencia_colaborador"
+    __table_args__ = (UniqueConstraint("ocorrencia_id", "colaborador_id", name="uq_ocorrencia_colaborador"),)
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column("ocorrencia_id", ForeignKey("ocorrencia.id", ondelete="CASCADE"))
+    collaborator_id: Mapped[int] = mapped_column("colaborador_id", ForeignKey("colaborador.id", ondelete="CASCADE"))
+
+    occurrence = relationship("Occurrence", back_populates="staff")
+    collaborator = relationship("Collaborator")
+
+
+class OccurrenceHistory(Base):
+    __tablename__ = "ocorrencia_historico"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    occurrence_id: Mapped[int] = mapped_column("ocorrencia_id", ForeignKey("ocorrencia.id", ondelete="CASCADE"))
+    action: Mapped[str] = mapped_column("acao", String(80))
+    description: Mapped[str] = mapped_column("descricao", Text)
+    performed_by: Mapped[int | None] = mapped_column("realizado_por", ForeignKey("colaborador.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column("criado_em", DateTime, default=datetime.utcnow, server_default=func.now())
+
+    occurrence = relationship("Occurrence", back_populates="history")
+    performer = relationship("Collaborator")

@@ -13,18 +13,6 @@ class UserMovementType(str, Enum):
     SAIDA = "SAIDA"
 
 
-class AttendanceStatus(str, Enum):
-    PRESENT = "presente"
-    ABSENT = "falta"
-    JUSTIFIED_ABSENT = "falta_justificada"
-
-
-class JustificationStatus(str, Enum):
-    PENDING = "pendente"
-    ACCEPTED = "aceita"
-    REJECTED = "recusada"
-
-
 class ReportStatus(str, Enum):
     DRAFT = "rascunho"
     SENT = "enviado_para_matriz"

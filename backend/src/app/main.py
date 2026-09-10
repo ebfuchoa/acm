@@ -26,6 +26,8 @@ app.add_middleware(
 def on_startup() -> None:
     if engine.dialect.name == "postgresql":
         with engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS justificativa_falta"))
+            connection.execute(text("DROP TABLE IF EXISTS frequencia"))
             connection.execute(
                 text(
                     """
@@ -114,6 +116,273 @@ def on_startup() -> None:
                     """
                 )
             )
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF to_regclass('public.justificativa_frequencia_grupo') IS NOT NULL
+                           AND to_regclass('public.frequencia_justificativa_falta') IS NULL THEN
+                            ALTER TABLE justificativa_frequencia_grupo RENAME TO frequencia_justificativa_falta;
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS frequencia_justificativa_falta (
+                        id SERIAL PRIMARY KEY,
+                        usuario_id INTEGER NOT NULL REFERENCES usuario(id) ON DELETE CASCADE,
+                        grupo_id INTEGER NOT NULL REFERENCES grupo(id) ON DELETE CASCADE,
+                        turno VARCHAR(20) NOT NULL,
+                        semana_referencia DATE NOT NULL,
+                        motivo TEXT NOT NULL,
+                        criado_em TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+                        atualizado_em TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+                        CONSTRAINT uq_frequencia_justificativa_falta_semana
+                            UNIQUE (usuario_id, grupo_id, turno, semana_referencia)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF to_regclass('public.justificativa_frequencia_grupo') IS NOT NULL THEN
+                            INSERT INTO frequencia_justificativa_falta (
+                                usuario_id,
+                                grupo_id,
+                                turno,
+                                semana_referencia,
+                                motivo,
+                                criado_em,
+                                atualizado_em
+                            )
+                            SELECT
+                                usuario_id,
+                                grupo_id,
+                                turno,
+                                semana_referencia,
+                                motivo,
+                                criado_em,
+                                atualizado_em
+                            FROM justificativa_frequencia_grupo
+                            ON CONFLICT (usuario_id, grupo_id, turno, semana_referencia)
+                            DO UPDATE SET
+                                motivo = EXCLUDED.motivo,
+                                atualizado_em = EXCLUDED.atualizado_em;
+
+                            DROP TABLE justificativa_frequencia_grupo;
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'frequencia_grupo'
+                              AND column_name = 'justificativa_falta'
+                        ) THEN
+                            INSERT INTO frequencia_justificativa_falta (
+                                usuario_id,
+                                grupo_id,
+                                turno,
+                                semana_referencia,
+                                motivo
+                            )
+                            SELECT
+                                fg.usuario_id,
+                                fg.grupo_id,
+                                fg.turno,
+                                date_trunc('week', fg.data_frequencia)::date,
+                                min(trim(fg.justificativa_falta))
+                            FROM frequencia_grupo fg
+                            WHERE fg.justificativa_falta IS NOT NULL
+                              AND trim(fg.justificativa_falta) <> ''
+                            GROUP BY
+                                fg.usuario_id,
+                                fg.grupo_id,
+                                fg.turno,
+                                date_trunc('week', fg.data_frequencia)::date
+                            ON CONFLICT (usuario_id, grupo_id, turno, semana_referencia)
+                            DO UPDATE SET
+                                motivo = EXCLUDED.motivo,
+                                atualizado_em = now();
+
+                            ALTER TABLE frequencia_grupo DROP COLUMN justificativa_falta;
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_frequencia_justificativa_falta_semana
+                    ON frequencia_justificativa_falta (grupo_id, turno, semana_referencia)
+                    """
+                )
+            )
+            connection.execute(text("CREATE SEQUENCE IF NOT EXISTS ocorrencia_numero_seq START 1"))
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS ocorrencia_categoria (
+                        id SERIAL PRIMARY KEY,
+                        nome VARCHAR(120) NOT NULL UNIQUE,
+                        ativo BOOLEAN NOT NULL DEFAULT TRUE,
+                        criado_em TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+                        atualizado_em TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO ocorrencia_categoria (nome)
+                    VALUES
+                        ('Atendimento emergencial'),
+                        ('Saúde / mal-estar'),
+                        ('Acidente'),
+                        ('Comportamental'),
+                        ('Conflito'),
+                        ('Segurança'),
+                        ('Incêndio'),
+                        ('Infraestrutura'),
+                        ('Problema elétrico'),
+                        ('Problema hidráulico'),
+                        ('Patrimônio'),
+                        ('Atendimento não programado'),
+                        ('Pessoa externa à ACM'),
+                        ('Funcionário'),
+                        ('Visitante'),
+                        ('Outros')
+                    ON CONFLICT (nome) DO NOTHING
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS ocorrencia (
+                        id SERIAL PRIMARY KEY,
+                        numero VARCHAR(20) NOT NULL UNIQUE,
+                        unidade_social_id INTEGER NOT NULL REFERENCES unidade_social(id),
+                        data_ocorrencia DATE NOT NULL,
+                        turno VARCHAR(20) NOT NULL DEFAULT 'Manhã',
+                        local VARCHAR(80) NOT NULL,
+                        local_detalhe VARCHAR(150),
+                        categoria_id INTEGER NOT NULL REFERENCES ocorrencia_categoria(id),
+                        gravidade VARCHAR(20) NOT NULL,
+                        descricao TEXT NOT NULL,
+                        providencias_tomadas TEXT,
+                        status VARCHAR(30) NOT NULL DEFAULT 'Aberta',
+                        resolucao TEXT,
+                        observacoes_adicionais TEXT,
+                        motivo_cancelamento TEXT,
+                        criado_por INTEGER NOT NULL REFERENCES colaborador(id),
+                        atualizado_por INTEGER REFERENCES colaborador(id),
+                        resolvido_por INTEGER REFERENCES colaborador(id),
+                        cancelado_por INTEGER REFERENCES colaborador(id),
+                        criado_em TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+                        atualizado_em TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+                        resolvido_em TIMESTAMP WITHOUT TIME ZONE,
+                        cancelado_em TIMESTAMP WITHOUT TIME ZONE,
+                        CONSTRAINT ck_ocorrencia_gravidade CHECK (gravidade IN ('Baixa', 'Média', 'Alta', 'Crítica')),
+                        CONSTRAINT ck_ocorrencia_status CHECK (status IN ('Aberta', 'Em acompanhamento', 'Resolvida', 'Cancelada'))
+                    )
+                    """
+                )
+            )
+            connection.execute(text("ALTER TABLE ocorrencia ADD COLUMN IF NOT EXISTS turno VARCHAR(20) NOT NULL DEFAULT 'Manhã'"))
+            connection.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_name = 'ocorrencia'
+                              AND column_name = 'hora_ocorrencia'
+                        ) THEN
+                            ALTER TABLE ocorrencia ALTER COLUMN hora_ocorrencia DROP NOT NULL;
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS ocorrencia_pessoa (
+                        id SERIAL PRIMARY KEY,
+                        ocorrencia_id INTEGER NOT NULL REFERENCES ocorrencia(id) ON DELETE CASCADE,
+                        tipo_pessoa VARCHAR(40) NOT NULL,
+                        usuario_id INTEGER REFERENCES usuario(id) ON DELETE SET NULL,
+                        nome_pessoa VARCHAR(200),
+                        observacao TEXT
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS ocorrencia_servico_externo (
+                        id SERIAL PRIMARY KEY,
+                        ocorrencia_id INTEGER NOT NULL REFERENCES ocorrencia(id) ON DELETE CASCADE,
+                        tipo_servico VARCHAR(80) NOT NULL,
+                        nome_servico VARCHAR(120),
+                        horario_acionamento TIME,
+                        protocolo VARCHAR(80),
+                        observacao TEXT
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS ocorrencia_colaborador (
+                        id SERIAL PRIMARY KEY,
+                        ocorrencia_id INTEGER NOT NULL REFERENCES ocorrencia(id) ON DELETE CASCADE,
+                        colaborador_id INTEGER NOT NULL REFERENCES colaborador(id) ON DELETE CASCADE,
+                        CONSTRAINT uq_ocorrencia_colaborador UNIQUE (ocorrencia_id, colaborador_id)
+                    )
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS ocorrencia_historico (
+                        id SERIAL PRIMARY KEY,
+                        ocorrencia_id INTEGER NOT NULL REFERENCES ocorrencia(id) ON DELETE CASCADE,
+                        acao VARCHAR(80) NOT NULL,
+                        descricao TEXT NOT NULL,
+                        realizado_por INTEGER REFERENCES colaborador(id),
+                        criado_em TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now()
+                    )
+                    """
+                )
+            )
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_ocorrencia_unidade_status ON ocorrencia (unidade_social_id, status)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_ocorrencia_data ON ocorrencia (data_ocorrencia DESC)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_ocorrencia_categoria ON ocorrencia (categoria_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_ocorrencia_pessoa_usuario ON ocorrencia_pessoa (usuario_id)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_ocorrencia_historico_ocorrencia ON ocorrencia_historico (ocorrencia_id)"))
             connection.execute(
                 text(
                     """

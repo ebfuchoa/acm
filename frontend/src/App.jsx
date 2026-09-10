@@ -6,6 +6,7 @@ import { AtendimentosPage, FrequenciaPage, RelatoriosPage, ParticipantesPage, Ac
 import { ClassificacaoGrupoPage } from './pages/classificacao/ClassificacaoGrupoPage'
 import { RecebimentoDoacoesPage } from './pages/controle/RecebimentoDoacoesPage'
 import { RegistroAtividadesDiariaPage } from './pages/controle/RegistroAtividadesDiariaPage'
+import { RegistroOcorrenciasPage } from './pages/controle/RegistroOcorrenciasPage'
 import { GestaoUnidadeDetalhePage, GestaoUnidadesPage } from './pages/gestao-unidades'
 import { LoginPage } from './pages/auth'
 import { getAuth, isAuthenticated } from './auth'
@@ -30,6 +31,23 @@ function canAccessDailyActivityRecord() {
   const auth = getAuth()
   const profile = normalizeProfile(auth?.profile)
   return Boolean(auth?.is_admin) || ['educador', 'educadora', 'administrador do sistema'].includes(profile)
+}
+
+function canAccessOccurrences() {
+  const auth = getAuth()
+  const profile = normalizeProfile(auth?.profile)
+  return Boolean(auth?.is_admin) || [
+    'administrador do sistema',
+    'coordenador',
+    'coordenadora',
+    'tecnico',
+    'tecnica',
+    'educador',
+    'educadora',
+    'educador(a)',
+    'secretaria executiva',
+    'secretaria administrativa',
+  ].includes(profile)
 }
 
 function UnitManagementRoute({ children }) {
@@ -57,6 +75,11 @@ function DonationReceiptRoute({ children }) {
   return children
 }
 
+function OccurrenceRoute({ children }) {
+  if (!canAccessOccurrences()) return <Navigate to="/" replace />
+  return children
+}
+
 function ProtectedApp() {
   if (!isAuthenticated()) return <Navigate to="/login" replace />
   return (
@@ -74,6 +97,7 @@ function ProtectedApp() {
         <Route path="/classificacao-grupo" element={<ClassificacaoGrupoPage />} />
         <Route path="/frequencia" element={<FrequenciaPage />} />
         <Route path="/registro-atividades-diaria" element={<DailyActivityRecordRoute><RegistroAtividadesDiariaPage /></DailyActivityRecordRoute>} />
+        <Route path="/registro-ocorrencias" element={<OccurrenceRoute><RegistroOcorrenciasPage /></OccurrenceRoute>} />
         <Route path="/recebimento-doacoes" element={<DonationReceiptRoute><RecebimentoDoacoesPage /></DonationReceiptRoute>} />
         <Route path="/atendimentos" element={<AtendimentosPage />} />
         <Route path="/relatorios" element={<RelatoriosPage />} />

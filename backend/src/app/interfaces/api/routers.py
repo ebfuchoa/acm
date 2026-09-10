@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 import calendar
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -10,12 +10,11 @@ from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, delete, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.application import schemas
 from app.application.services import (
-    AttendanceService,
     CrudService,
     GroupClassificationService,
     ParticipantService,
@@ -766,6 +765,409 @@ def get_unit_followup_dashboard(
         "donations": donations,
         "alerts": alerts,
     }
+
+
+OCCURRENCE_ALLOWED_PROFILES = {
+    "administrador do sistema",
+    "coordenador",
+    "coordenadora",
+    "tecnico",
+    "tecnica",
+    "técnico",
+    "técnica",
+    "educador",
+    "educadora",
+    "educador(a)",
+    "secretaria executiva",
+    "secretária executiva",
+    "secretaria administrativa",
+    "secretária administrativa",
+}
+OCCURRENCE_TERMINAL_STATUSES = {"Resolvida", "Cancelada"}
+OCCURRENCE_ALLOWED_TRANSITIONS = {
+    "Aberta": {"Aberta", "Em acompanhamento", "Resolvida", "Cancelada"},
+    "Em acompanhamento": {"Em acompanhamento", "Resolvida", "Cancelada"},
+    "Resolvida": {"Resolvida"},
+    "Cancelada": {"Cancelada"},
+}
+
+
+def _normalize_profile(value: str | None) -> str:
+    normalized = unicodedata.normalize("NFD", str(value or "").strip())
+    return "".join(char for char in normalized if unicodedata.category(char) != "Mn").lower()
+
+
+def _can_access_occurrences(ctx: AuthContext) -> bool:
+    profile = _normalize_profile(ctx.profile)
+    return ctx.is_admin or profile in OCCURRENCE_ALLOWED_PROFILES
+
+
+def _require_occurrence_access(ctx: AuthContext) -> None:
+    if not _can_access_occurrences(ctx):
+        raise HTTPException(status_code=403, detail="Acesso negado para Registro de Ocorrências.")
+
+
+def _current_collaborator(db: Session, ctx: AuthContext) -> models.Collaborator:
+    collaborator = db.get(models.Collaborator, ctx.user_id)
+    if collaborator is None or not collaborator.is_active:
+        raise HTTPException(status_code=403, detail="Colaborador autenticado não encontrado.")
+    return collaborator
+
+
+def _generate_occurrence_number(db: Session, occurrence_date: date) -> str:
+    sequence = db.scalar(text("SELECT nextval('ocorrencia_numero_seq')"))
+    return f"OC-{occurrence_date.year}-{int(sequence):06d}"
+
+
+def _serialize_occurrence(occurrence: models.Occurrence) -> dict:
+    return {
+        "id": occurrence.id,
+        "number": occurrence.number,
+        "unit_id": occurrence.unit_id,
+        "unit_name": occurrence.unit.name if occurrence.unit else None,
+        "occurrence_date": occurrence.occurrence_date,
+        "occurrence_shift": occurrence.occurrence_shift,
+        "location": occurrence.location,
+        "location_details": occurrence.location_details,
+        "category_id": occurrence.category_id,
+        "category_name": occurrence.category.name if occurrence.category else None,
+        "severity": occurrence.severity,
+        "description": occurrence.description,
+        "actions_taken": occurrence.actions_taken,
+        "status": occurrence.status,
+        "resolution": occurrence.resolution,
+        "additional_notes": occurrence.additional_notes,
+        "cancellation_reason": occurrence.cancellation_reason,
+        "created_by": occurrence.created_by,
+        "creator_name": occurrence.creator.name if occurrence.creator else None,
+        "updated_by": occurrence.updated_by,
+        "resolved_by": occurrence.resolved_by,
+        "cancelled_by": occurrence.cancelled_by,
+        "created_at": occurrence.created_at,
+        "updated_at": occurrence.updated_at,
+        "resolved_at": occurrence.resolved_at,
+        "cancelled_at": occurrence.cancelled_at,
+        "people": [
+            {
+                "id": item.id,
+                "person_type": item.person_type,
+                "user_id": item.user_id,
+                "user_name": item.user.name if item.user else None,
+                "person_name": item.person_name,
+                "notes": item.notes,
+            }
+            for item in occurrence.people
+        ],
+        "external_services": [
+            {
+                "id": item.id,
+                "service_type": item.service_type,
+                "service_name": item.service_name,
+                "called_at": item.called_at,
+                "protocol": item.protocol,
+                "notes": item.notes,
+            }
+            for item in occurrence.external_services
+        ],
+        "staff": [
+            {
+                "collaborator_id": item.collaborator_id,
+                "collaborator_name": item.collaborator.name if item.collaborator else None,
+            }
+            for item in occurrence.staff
+        ],
+        "history": [
+            {
+                "id": item.id,
+                "action": item.action,
+                "description": item.description,
+                "performed_by": item.performed_by,
+                "performer_name": item.performer.name if item.performer else None,
+                "created_at": item.created_at,
+            }
+            for item in sorted(occurrence.history, key=lambda row: row.created_at or datetime.min, reverse=True)
+        ],
+    }
+
+
+def _get_occurrence_scoped(db: Session, occurrence_id: int, ctx: AuthContext) -> models.Occurrence:
+    occurrence = db.get(models.Occurrence, occurrence_id)
+    if occurrence is None:
+        raise HTTPException(status_code=404, detail="Ocorrência não encontrada.")
+    if not ctx.is_admin:
+        enforce_unit_scope(ctx, occurrence.unit_id)
+    return occurrence
+
+
+def _validate_occurrence_references(db: Session, payload: schemas.OccurrenceBase, unit_id: int, ctx: AuthContext) -> models.OccurrenceCategory:
+    category = db.get(models.OccurrenceCategory, payload.category_id)
+    if category is None or not category.is_active:
+        raise HTTPException(status_code=400, detail="Categoria de ocorrência inválida.")
+    for person in payload.people:
+        if person.user_id:
+            user = db.get(models.User, person.user_id)
+            if user is None:
+                raise HTTPException(status_code=400, detail="Usuário envolvido não encontrado.")
+            if user.status != UserStatus.ACTIVE:
+                raise HTTPException(status_code=400, detail="Usuário envolvido deve estar ativo.")
+            if not ctx.is_admin and user.unit_id != unit_id:
+                raise HTTPException(status_code=403, detail="Usuário envolvido pertence a outra unidade social.")
+    if payload.staff_ids:
+        staff_query = select(func.count(models.Collaborator.id)).where(
+            and_(
+                models.Collaborator.id.in_(payload.staff_ids),
+                models.Collaborator.is_active.is_(True),
+            )
+        )
+        if not ctx.is_admin:
+            staff_query = staff_query.where(models.Collaborator.social_unit_id == unit_id)
+        staff_count = db.scalar(staff_query) or 0
+        if staff_count != len(set(payload.staff_ids)):
+            raise HTTPException(status_code=400, detail="Há colaborador responsável inválido para a ocorrência.")
+    return category
+
+
+def _sync_occurrence_children(db: Session, occurrence: models.Occurrence, payload: schemas.OccurrenceBase) -> None:
+    occurrence.people.clear()
+    occurrence.external_services.clear()
+    occurrence.staff.clear()
+    for person in payload.people:
+        occurrence.people.append(
+            models.OccurrencePerson(
+                person_type=person.person_type,
+                user_id=person.user_id,
+                person_name=person.person_name,
+                notes=person.notes,
+            )
+        )
+    for service in payload.external_services:
+        occurrence.external_services.append(
+            models.OccurrenceExternalService(
+                service_type=service.service_type,
+                service_name=service.service_name,
+                called_at=service.called_at,
+                protocol=service.protocol,
+                notes=service.notes,
+            )
+        )
+    for collaborator_id in payload.staff_ids:
+        occurrence.staff.append(models.OccurrenceStaff(collaborator_id=collaborator_id))
+
+
+def _append_occurrence_history(occurrence: models.Occurrence, action: str, description: str, user_id: int | None) -> None:
+    occurrence.history.append(
+        models.OccurrenceHistory(
+            action=action,
+            description=description,
+            performed_by=user_id,
+        )
+    )
+
+
+@router.get('/ocorrencias/categorias', response_model=list[schemas.OccurrenceCategoryRead])
+def list_occurrence_categories(
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_occurrence_access(ctx)
+    return db.scalars(
+        select(models.OccurrenceCategory)
+        .where(models.OccurrenceCategory.is_active.is_(True))
+        .order_by(models.OccurrenceCategory.name.asc())
+    ).all()
+
+
+@router.get('/ocorrencias/usuarios')
+def list_occurrence_user_options(
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_occurrence_access(ctx)
+    query = (
+        select(models.User)
+        .where(models.User.status == UserStatus.ACTIVE)
+        .order_by(models.User.name.asc())
+    )
+    if not ctx.is_admin:
+        query = query.where(models.User.unit_id == ctx.social_unit_id)
+    return [{"id": user.id, "name": user.name} for user in db.scalars(query).all()]
+
+
+@router.get('/ocorrencias/colaboradores')
+def list_occurrence_collaborator_options(
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_occurrence_access(ctx)
+    query = (
+        select(models.Collaborator)
+        .where(models.Collaborator.is_active.is_(True))
+        .order_by(models.Collaborator.name.asc())
+    )
+    if not ctx.is_admin:
+        query = query.where(models.Collaborator.social_unit_id == ctx.social_unit_id)
+    return [{"id": collaborator.id, "name": collaborator.name} for collaborator in db.scalars(query).all()]
+
+
+@router.get('/ocorrencias', response_model=schemas.OccurrenceListResponse)
+def list_occurrences(
+    data_inicio: date | None = None,
+    data_fim: date | None = None,
+    busca: str = "",
+    numero: str = "",
+    categoria_id: int | None = None,
+    gravidade: str = "",
+    status_ocorrencia: str = "",
+    local: str = "",
+    usuario_id: int | None = None,
+    responsavel_id: int | None = None,
+    page: int = 1,
+    page_size: int = 100,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_occurrence_access(ctx)
+    page = max(1, page)
+    page_size = min(100, max(1, page_size))
+    query = select(models.Occurrence)
+    if not ctx.is_admin:
+        query = query.where(models.Occurrence.unit_id == ctx.social_unit_id)
+    if data_inicio:
+        query = query.where(models.Occurrence.occurrence_date >= data_inicio)
+    if data_fim:
+        query = query.where(models.Occurrence.occurrence_date <= data_fim)
+    if busca.strip():
+        search = busca.strip().lower()
+        query = query.join(models.OccurrenceCategory)
+        query = query.where(
+            or_(
+                func.lower(models.Occurrence.number).contains(search),
+                func.lower(models.Occurrence.severity).contains(search),
+                func.lower(models.OccurrenceCategory.name).contains(search),
+            )
+        )
+    if numero.strip():
+        query = query.where(func.lower(models.Occurrence.number).contains(numero.strip().lower()))
+    if categoria_id:
+        query = query.where(models.Occurrence.category_id == categoria_id)
+    if gravidade.strip():
+        query = query.where(models.Occurrence.severity == gravidade.strip())
+    if status_ocorrencia.strip():
+        query = query.where(models.Occurrence.status == status_ocorrencia.strip())
+    if local.strip():
+        query = query.where(models.Occurrence.location == local.strip())
+    if usuario_id:
+        query = query.join(models.OccurrencePerson).where(models.OccurrencePerson.user_id == usuario_id)
+    if responsavel_id:
+        query = query.where(models.Occurrence.created_by == responsavel_id)
+
+    total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    rows = db.scalars(
+        query.order_by(models.Occurrence.occurrence_date.desc(), models.Occurrence.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).unique().all()
+    return {"items": [_serialize_occurrence(row) for row in rows], "total": total, "page": page, "page_size": page_size}
+
+
+@router.get('/ocorrencias/{occurrence_id}', response_model=schemas.OccurrenceRead)
+def get_occurrence(
+    occurrence_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_occurrence_access(ctx)
+    return _serialize_occurrence(_get_occurrence_scoped(db, occurrence_id, ctx))
+
+
+@router.post('/ocorrencias', response_model=schemas.OccurrenceRead)
+def create_occurrence(
+    payload: schemas.OccurrenceCreate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_occurrence_access(ctx)
+    collaborator = _current_collaborator(db, ctx)
+    unit_id = collaborator.social_unit_id
+    _validate_occurrence_references(db, payload, unit_id, ctx)
+    occurrence = models.Occurrence(
+        number=_generate_occurrence_number(db, payload.occurrence_date),
+        unit_id=unit_id,
+        occurrence_date=payload.occurrence_date,
+        occurrence_shift=payload.occurrence_shift,
+        location=payload.location,
+        location_details=payload.location_details,
+        category_id=payload.category_id,
+        severity=payload.severity,
+        description=payload.description,
+        actions_taken=payload.actions_taken,
+        status=payload.status,
+        resolution=payload.resolution,
+        additional_notes=payload.additional_notes,
+        cancellation_reason=payload.cancellation_reason,
+        created_by=ctx.user_id,
+        updated_by=ctx.user_id,
+    )
+    if payload.status == "Resolvida":
+        occurrence.resolved_by = ctx.user_id
+        occurrence.resolved_at = datetime.utcnow()
+    if payload.status == "Cancelada":
+        occurrence.cancelled_by = ctx.user_id
+        occurrence.cancelled_at = datetime.utcnow()
+    _sync_occurrence_children(db, occurrence, payload)
+    _append_occurrence_history(occurrence, "Criação", "Ocorrência registrada.", ctx.user_id)
+    db.add(occurrence)
+    db.commit()
+    db.refresh(occurrence)
+    return _serialize_occurrence(occurrence)
+
+
+@router.put('/ocorrencias/{occurrence_id}', response_model=schemas.OccurrenceRead)
+def update_occurrence(
+    occurrence_id: int,
+    payload: schemas.OccurrenceUpdate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    _require_occurrence_access(ctx)
+    occurrence = _get_occurrence_scoped(db, occurrence_id, ctx)
+    if occurrence.status in OCCURRENCE_TERMINAL_STATUSES and payload.status != occurrence.status:
+        raise HTTPException(status_code=400, detail="Ocorrência em status terminal não pode mudar de status.")
+    allowed_statuses = OCCURRENCE_ALLOWED_TRANSITIONS.get(occurrence.status, {occurrence.status})
+    if payload.status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail="Transição de status inválida.")
+    _validate_occurrence_references(db, payload, occurrence.unit_id, ctx)
+
+    previous_status = occurrence.status
+    occurrence.occurrence_date = payload.occurrence_date
+    occurrence.occurrence_shift = payload.occurrence_shift
+    occurrence.location = payload.location
+    occurrence.location_details = payload.location_details
+    occurrence.category_id = payload.category_id
+    occurrence.severity = payload.severity
+    occurrence.description = payload.description
+    occurrence.actions_taken = payload.actions_taken
+    occurrence.status = payload.status
+    occurrence.resolution = payload.resolution
+    occurrence.additional_notes = payload.additional_notes
+    occurrence.cancellation_reason = payload.cancellation_reason
+    occurrence.updated_by = ctx.user_id
+    if payload.status == "Resolvida" and previous_status != "Resolvida":
+        occurrence.resolved_by = ctx.user_id
+        occurrence.resolved_at = datetime.utcnow()
+        _append_occurrence_history(occurrence, "Resolução", "Ocorrência resolvida.", ctx.user_id)
+    if payload.status == "Cancelada" and previous_status != "Cancelada":
+        occurrence.cancelled_by = ctx.user_id
+        occurrence.cancelled_at = datetime.utcnow()
+        _append_occurrence_history(occurrence, "Cancelamento", "Ocorrência cancelada.", ctx.user_id)
+    if payload.status != previous_status:
+        _append_occurrence_history(occurrence, "Mudança de status", f"Status alterado de {previous_status} para {payload.status}.", ctx.user_id)
+    else:
+        _append_occurrence_history(occurrence, "Edição", "Ocorrência atualizada.", ctx.user_id)
+    _sync_occurrence_children(db, occurrence, payload)
+    db.commit()
+    db.refresh(occurrence)
+    return _serialize_occurrence(occurrence)
 
 
 
@@ -1646,16 +2048,6 @@ def delete_enrollment(enrollment_id: int, db: Session = Depends(get_db), ctx: Au
     CrudService(db).delete_enrollment(enrollment_id)
 
 
-@router.post('/frequencias', response_model=schemas.AttendanceRead)
-def create_attendance(payload: schemas.AttendanceCreate, db: Session = Depends(get_db)):
-    return AttendanceService(db).register(payload)
-
-
-@router.post('/frequencias/lote', response_model=list[schemas.AttendanceRead])
-def create_attendance_bulk(payload: list[schemas.AttendanceCreate], db: Session = Depends(get_db)):
-    return AttendanceService(db).bulk_register(payload)
-
-
 def _normalize_shift(value: str) -> str:
     normalized = value.strip().lower()
     if normalized in {"manha", "manhã"}:
@@ -1762,12 +2154,29 @@ def get_weekly_frequency(
         )
 
     by_user_day = {(r.user_id, r.attendance_date): bool(r.present) for r in records}
+    justifications_by_user = {}
+    if user_ids:
+        justifications = db.scalars(
+            select(models.GroupAttendanceJustification).where(
+                and_(
+                    models.GroupAttendanceJustification.group_id == grupo_id,
+                    models.GroupAttendanceJustification.shift == shift,
+                    models.GroupAttendanceJustification.week_reference == days[0],
+                    models.GroupAttendanceJustification.user_id.in_(user_ids),
+                )
+            )
+        ).all()
+        justifications_by_user = {item.user_id: item.reason for item in justifications}
     frequencias = []
     for user in users:
         dias = {}
         for d in days:
             dias[_weekday_key(d)] = by_user_day.get((user["usuario_id"], d), False)
-        frequencias.append({"usuario_id": user["usuario_id"], "dias": dias})
+        frequencias.append({
+            "usuario_id": user["usuario_id"],
+            "dias": dias,
+            "justificativa": justifications_by_user.get(user["usuario_id"]),
+        })
 
     return {
         "semana_referencia": days[0],
@@ -1812,8 +2221,39 @@ def save_weekly_frequency(
         ).all()
     )
     existing_map = {(r.user_id, r.attendance_date): r for r in existing}
+    existing_justifications = list(
+        db.scalars(
+            select(models.GroupAttendanceJustification).where(
+                and_(
+                    models.GroupAttendanceJustification.group_id == payload.grupo_id,
+                    models.GroupAttendanceJustification.shift == shift,
+                    models.GroupAttendanceJustification.week_reference == days[0],
+                    models.GroupAttendanceJustification.user_id.in_(list(payload_user_ids) or [0]),
+                )
+            )
+        ).all()
+    )
+    justification_map = {item.user_id: item for item in existing_justifications}
 
     for row in payload.frequencias:
+        cleaned_justification = row.justificativa if any(not bool(value) for value in row.dias.values()) else None
+        current_justification = justification_map.get(row.usuario_id)
+        if cleaned_justification:
+            if current_justification is None:
+                db.add(
+                    models.GroupAttendanceJustification(
+                        user_id=row.usuario_id,
+                        group_id=payload.grupo_id,
+                        shift=shift,
+                        week_reference=days[0],
+                        reason=cleaned_justification,
+                    )
+                )
+            else:
+                current_justification.reason = cleaned_justification
+        elif current_justification is not None:
+            db.delete(current_justification)
+
         for key, present in row.dias.items():
             frequency_date = key_to_date[key]
             current = existing_map.get((row.usuario_id, frequency_date))
@@ -1840,14 +2280,34 @@ def save_weekly_frequency(
     )
 
 
-@router.post('/justificativas', response_model=schemas.JustificationRead)
-def create_justification(payload: schemas.JustificationCreate, db: Session = Depends(get_db)):
-    return AttendanceService(db).justify_absence(payload)
+@router.delete('/frequencias/semanal/justificativa', status_code=204)
+def delete_weekly_frequency_justification(
+    semana: date,
+    grupo_id: int,
+    turno: str,
+    usuario_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    shift = _normalize_shift(turno)
+    users = list_frequency_users(grupo_id=grupo_id, turno=shift, db=db, ctx=ctx)
+    allowed_user_ids = {item["usuario_id"] for item in users}
+    if usuario_id not in allowed_user_ids:
+        raise HTTPException(status_code=400, detail="Usuário fora do grupo/turno informado.")
 
-
-@router.patch('/justificativas/{justification_id}', response_model=schemas.JustificationRead)
-def decide_justification(justification_id: int, payload: schemas.JustificationDecision, db: Session = Depends(get_db)):
-    return AttendanceService(db).decide_justification(justification_id, payload)
+    week_reference = _week_days_from_reference(semana)[0]
+    db.execute(
+        delete(models.GroupAttendanceJustification).where(
+            and_(
+                models.GroupAttendanceJustification.group_id == grupo_id,
+                models.GroupAttendanceJustification.shift == shift,
+                models.GroupAttendanceJustification.week_reference == week_reference,
+                models.GroupAttendanceJustification.user_id == usuario_id,
+            )
+        )
+    )
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post('/relatorios', response_model=schemas.ReportRead)

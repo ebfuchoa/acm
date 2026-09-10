@@ -58,10 +58,13 @@ export function FrequenciaPage() {
   const [grupos, setGrupos] = useState([])
   const [usuarios, setUsuarios] = useState([])
   const [frequencias, setFrequencias] = useState({})
+  const [justificativas, setJustificativas] = useState({})
   const [collapsedGroups, setCollapsedGroups] = useState({})
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [justificationModal, setJustificationModal] = useState(null)
+  const [deletingJustification, setDeletingJustification] = useState(false)
 
   const gruposExibidos = useMemo(
     () => grupoId === ALL_GROUPS_VALUE
@@ -106,6 +109,7 @@ export function FrequenciaPage() {
     if (!grupoId) {
       setUsuarios([])
       setFrequencias({})
+      setJustificativas({})
       return
     }
 
@@ -113,6 +117,7 @@ export function FrequenciaPage() {
     if (!semanaIso) {
       setUsuarios([])
       setFrequencias({})
+      setJustificativas({})
       return
     }
 
@@ -137,17 +142,21 @@ export function FrequenciaPage() {
         if (ignore) return
         setUsuarios(contexts.flatMap(({ usersRows }) => usersRows))
         const map = {}
+        const justificationMap = {}
         contexts.forEach(({ group, weekRows }) => {
           ;(weekRows.frequencias || []).forEach((item) => {
             map[frequencyKey(group.id, item.usuario_id)] = { ...item.dias }
+            justificationMap[frequencyKey(group.id, item.usuario_id)] = item.justificativa || ''
           })
         })
         setFrequencias(map)
+        setJustificativas(justificationMap)
       } catch (err) {
         if (ignore) return
         setError(err.message)
         setUsuarios([])
         setFrequencias({})
+        setJustificativas({})
       } finally {
         if (!ignore) setLoading(false)
       }
@@ -160,11 +169,28 @@ export function FrequenciaPage() {
     }
   }, [grupoId, grupos, turno, semanaReferenciaBr])
 
+  useEffect(() => {
+    setJustificativas((prev) => {
+      let changed = false
+      const next = { ...prev }
+      Object.keys(next).forEach((key) => {
+        const current = frequencias[key] || {}
+        const userHasAbsence = WEEK_DAYS.some((day) => !Boolean(current[day.key]))
+        if (!userHasAbsence && next[key]) {
+          next[key] = ''
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
+  }, [frequencias])
+
   function onTurnoChange(value) {
     setGrupoId('')
     setGrupos([])
     setUsuarios([])
     setFrequencias({})
+    setJustificativas({})
     setError('')
     setMessage('')
     setTurno(value)
@@ -182,6 +208,61 @@ export function FrequenciaPage() {
         },
       }
     })
+  }
+
+  function hasAbsence(groupId, userId) {
+    const current = frequencias[frequencyKey(groupId, userId)] || {}
+    return WEEK_DAYS.some((day) => !Boolean(current[day.key]))
+  }
+
+  function onJustificationChange(groupId, userId, value) {
+    const key = frequencyKey(groupId, userId)
+    setJustificativas((prev) => ({ ...prev, [key]: value }))
+  }
+
+  function openJustificationModal(user) {
+    const key = frequencyKey(user.grupo_id, user.usuario_id)
+    setJustificationModal({
+      key,
+      groupId: user.grupo_id,
+      userId: user.usuario_id,
+      userName: user.nome,
+      groupName: user.grupo_nome,
+      hasAbsence: hasAbsence(user.grupo_id, user.usuario_id),
+    })
+  }
+
+  function closeJustificationModal() {
+    setJustificationModal(null)
+  }
+
+  async function onDeleteJustification() {
+    if (!justificationModal || !canManage) return
+    const semanaIso = brToIsoDate(semanaReferenciaBr)
+    if (!semanaIso) {
+      setError('Informe a semana de referência no formato dd/mm/aaaa.')
+      return
+    }
+
+    setDeletingJustification(true)
+    setError('')
+    setMessage('')
+    try {
+      const params = new URLSearchParams({
+        semana: semanaIso,
+        grupo_id: String(justificationModal.groupId),
+        turno,
+        usuario_id: String(justificationModal.userId),
+      })
+      await api(`/frequencias/semanal/justificativa?${params.toString()}`, { method: 'DELETE' })
+      setJustificativas((prev) => ({ ...prev, [justificationModal.key]: '' }))
+      setMessage('Justificativa excluída com sucesso.')
+      closeJustificationModal()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setDeletingJustification(false)
+    }
   }
 
   function toggleGroup(groupId) {
@@ -221,6 +302,9 @@ export function FrequenciaPage() {
             .filter((user) => String(user.grupo_id) === String(group.id))
             .map((user) => ({
               usuario_id: user.usuario_id,
+              justificativa: hasAbsence(group.id, user.usuario_id)
+                ? (justificativas[frequencyKey(group.id, user.usuario_id)] || '')
+                : null,
               dias: WEEK_DAYS.reduce((acc, day) => {
                 acc[day.key] = Boolean(frequencias[frequencyKey(group.id, user.usuario_id)]?.[day.key])
                 return acc
@@ -316,28 +400,45 @@ export function FrequenciaPage() {
                               {day.dateLabel && <small className="frequencia-dia-data">({day.dateLabel})</small>}
                             </th>
                           ))}
+                          <th><span>Justificativa</span><small className="frequencia-dia-data"><strong>Falta</strong></small></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {groupUsers.map((user) => (
-                          <tr key={frequencyKey(user.grupo_id, user.usuario_id)}>
-                            <td>{user.nome}</td>
-                            <td>{user.idade}</td>
-                            <td>{user.grupo_nome}</td>
-                            <td>{user.turno}</td>
-                            {WEEK_DAYS.map((day) => (
-                              <td key={`${user.usuario_id}-${day.key}`}>
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(frequencias[frequencyKey(user.grupo_id, user.usuario_id)]?.[day.key])}
-                                  onChange={() => onToggle(user.grupo_id, user.usuario_id, day.key)}
-                                  disabled={!canManage}
-                                  style={{ margin: 0 }}
-                                />
+                        {groupUsers.map((user) => {
+                          const key = frequencyKey(user.grupo_id, user.usuario_id)
+                          const userHasAbsence = hasAbsence(user.grupo_id, user.usuario_id)
+                          return (
+                            <tr key={key}>
+                              <td>{user.nome}</td>
+                              <td>{user.idade}</td>
+                              <td>{user.grupo_nome}</td>
+                              <td>{user.turno}</td>
+                              {WEEK_DAYS.map((day) => (
+                                <td key={`${user.usuario_id}-${day.key}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(frequencias[key]?.[day.key])}
+                                    onChange={() => onToggle(user.grupo_id, user.usuario_id, day.key)}
+                                    disabled={!canManage}
+                                    style={{ margin: 0 }}
+                                  />
+                                </td>
+                              ))}
+                              <td className="frequencia-justificativa-cell">
+                                <button
+                                  type="button"
+                                  className={`frequencia-justificativa-button ${justificativas[key] ? 'has-value' : ''}`}
+                                  onClick={() => openJustificationModal(user)}
+                                  disabled={!userHasAbsence && !justificativas[key]}
+                                  title={justificativas[key] ? 'Visualizar justificativa' : 'Justificar falta'}
+                                  aria-label={justificativas[key] ? 'Visualizar justificativa' : 'Justificar falta'}
+                                >
+                                  {justificativas[key] ? '✓' : '✎'}
+                                </button>
                               </td>
-                            ))}
-                          </tr>
-                        ))}
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -353,6 +454,47 @@ export function FrequenciaPage() {
           <button type="button" onClick={onSave} disabled={loading || !usuarios.length || !canManage}>Salvar</button>
         </div>
       </div>
+
+      {justificationModal && (
+        <div className="modal-overlay" role="presentation" onClick={closeJustificationModal}>
+          <div className="modal-card frequencia-justificativa-modal" role="dialog" aria-modal="true" aria-labelledby="frequencia-justificativa-title" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 id="frequencia-justificativa-title">Justificativa</h3>
+                <p>{justificationModal.userName} · {justificationModal.groupName}</p>
+              </div>
+              <button type="button" className="modal-close" onClick={closeJustificationModal} aria-label="Fechar">×</button>
+            </div>
+            <div className="field">
+              <label>JUSTIFICATIVA DA FALTA NA SEMANA</label>
+              <textarea
+                className="frequencia-justificativa"
+                value={justificativas[justificationModal.key] || ''}
+                onChange={(event) => onJustificationChange(justificationModal.groupId, justificationModal.userId, event.target.value)}
+                maxLength={500}
+                rows={6}
+                placeholder={justificationModal.hasAbsence ? 'Descreva a justificativa da falta nesta semana' : 'Este usuário não possui faltas na semana'}
+                disabled={!canManage || !justificationModal.hasAbsence}
+              />
+              <small className="frequencia-justificativa-counter">{(justificativas[justificationModal.key] || '').length}/500</small>
+            </div>
+            <div className="form-actions">
+              <button type="button" className="btn btn-ghost" onClick={closeJustificationModal}>Cancelar</button>
+              {!!justificativas[justificationModal.key] && (
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={onDeleteJustification}
+                  disabled={!canManage || deletingJustification}
+                >
+                  {deletingJustification ? 'Excluindo...' : 'Excluir justificativa'}
+                </button>
+              )}
+              <button type="button" onClick={closeJustificationModal} disabled={!canManage || !justificationModal.hasAbsence || deletingJustification}>Concluir</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

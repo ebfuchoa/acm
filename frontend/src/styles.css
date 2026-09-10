@@ -2002,8 +2002,15 @@ button:hover {
   margin-bottom: 0;
 }
 
-.frequencia-table th:nth-child(n + 5),
-.frequencia-table td:nth-child(n + 5) {
+.frequencia-table th:nth-child(n + 5):nth-child(-n + 9),
+.frequencia-table td:nth-child(n + 5):nth-child(-n + 9) {
+  text-align: center;
+}
+
+.frequencia-table th:last-child,
+.frequencia-table td:last-child {
+  width: 120px;
+  min-width: 120px;
   text-align: center;
 }
 
@@ -2029,6 +2036,129 @@ button:hover {
   transform: none;
 }
 
+.frequencia-justificativa-cell {
+  text-align: center;
+}
+
+.frequencia-justificativa-button {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(27, 96, 155, 0.22);
+  border-radius: 999px;
+  background: #eef6ff;
+  color: var(--brand-blue);
+  font-size: 1.05rem;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.frequencia-justificativa-button:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.04);
+  border-color: var(--brand-blue);
+  box-shadow: 0 8px 18px rgba(27, 96, 155, 0.16);
+}
+
+.frequencia-justificativa-button.has-value {
+  background: #e9f7ef;
+  color: #22764a;
+  border-color: rgba(34, 118, 74, 0.28);
+}
+
+.frequencia-justificativa-button:disabled {
+  background: #f3f6fa;
+  color: #a8b3c1;
+  cursor: not-allowed;
+}
+
+.frequencia-justificativa {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  border: 1px solid rgba(27, 96, 155, 0.22);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  padding: 9px 10px;
+  box-shadow: 0 4px 12px rgba(13, 63, 122, 0.05);
+}
+
+.frequencia-justificativa:focus {
+  outline: none;
+  border-color: var(--brand-blue);
+  box-shadow: 0 0 0 3px rgba(27, 96, 155, 0.12);
+}
+
+.frequencia-justificativa:disabled {
+  background: #f4f7fb;
+  color: #7a8797;
+  cursor: not-allowed;
+}
+
+.frequencia-justificativa-modal {
+  width: min(620px, 100%);
+}
+
+.frequencia-justificativa-modal .modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.frequencia-justificativa-modal .modal-header h3 {
+  margin: 0;
+  color: var(--brand-blue-dark);
+  font-size: 1.2rem;
+}
+
+.frequencia-justificativa-modal .modal-header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.frequencia-justificativa-modal .modal-close {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(27, 96, 155, 0.14);
+  border-radius: 999px;
+  background: #f4f8fc;
+  color: var(--brand-blue-dark);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.frequencia-justificativa-modal .btn-danger {
+  background: var(--brand-red);
+  border-color: var(--brand-red);
+  color: #fff;
+}
+
+.frequencia-justificativa-modal .btn-danger:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.frequencia-justificativa-counter {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  text-align: right;
+  font-size: 0.78rem;
+}
+
 .frequencia-dia-data {
   display: block;
   margin-top: 3px;
@@ -2046,6 +2176,340 @@ button:hover {
   background: #eef4fb;
   color: var(--text);
   font-size: 0.95rem;
+}
+
+.occurrence-form {
+  display: grid;
+  gap: 18px;
+}
+
+.occurrence-top-tabs {
+  margin-bottom: -18px;
+}
+
+.occurrence-form .form-row,
+.occurrence-repeat-card .form-row {
+  align-items: end;
+}
+
+.occurrence-form .field,
+.occurrence-repeat-card .field {
+  min-width: 0;
+}
+
+.occurrence-form input,
+.occurrence-form select,
+.occurrence-form textarea,
+.occurrence-repeat-card input,
+.occurrence-repeat-card select,
+.occurrence-repeat-card textarea {
+  margin-bottom: 0;
+}
+
+.occurrence-form .date-picker-br {
+  margin: 0 !important;
+}
+
+.occurrence-form .date-picker-br .MuiFormControl-root,
+.occurrence-form .date-picker-br .MuiTextField-root {
+  width: 100%;
+}
+
+.occurrence-identification-grid {
+  grid-template-columns: minmax(150px, 0.85fr) minmax(130px, 0.7fr) minmax(180px, 1fr) minmax(220px, 1.15fr);
+}
+
+.occurrence-detail-field {
+  grid-column: span 2;
+}
+
+.occurrence-description-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.85fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.occurrence-description-layout .field {
+  min-width: 0;
+}
+
+.occurrence-description-layout .field:first-child {
+  grid-row: span 2;
+}
+
+.occurrence-description-layout textarea {
+  height: 100%;
+  resize: vertical;
+}
+
+.occurrence-main-textarea {
+  min-height: 190px;
+}
+
+.occurrence-section {
+  padding: 16px;
+  border: 1px solid rgba(27, 96, 155, 0.12);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fbff, #fff);
+}
+
+.occurrence-section-description {
+  padding-top: 16px;
+}
+
+.occurrence-section h3,
+.occurrence-section-header h3 {
+  margin: 0 0 16px;
+  color: var(--brand-blue-dark);
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.occurrence-subsection-title {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 18px;
+  padding: 12px 14px 12px 0;
+  border-bottom: 1px solid rgba(27, 96, 155, 0.14);
+  border-radius: 12px;
+  background: transparent;
+}
+
+.occurrence-subsection-title h3 {
+  margin: 0;
+  color: var(--brand-blue-dark);
+}
+
+.occurrence-subsection-title span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.occurrence-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.occurrence-tabs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.occurrence-tabs {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.occurrence-tab-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.occurrence-helper-text {
+  margin: -6px 0 14px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.occurrence-repeat-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid rgba(27, 96, 155, 0.12);
+  border-radius: 14px;
+  background: #fff;
+}
+
+.occurrence-readonly-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.occurrence-readonly-meta span,
+.occurrence-history-item {
+  padding: 10px 12px;
+  border: 1px solid rgba(27, 96, 155, 0.14);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+}
+
+.occurrence-history-item {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.occurrence-history-item strong {
+  color: var(--brand-blue-dark);
+}
+
+.occurrence-history-item small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.occurrence-span-2 {
+  grid-column: span 2;
+}
+
+.occurrence-person-grid {
+  grid-template-columns: minmax(130px, 0.65fr) minmax(220px, 1fr) minmax(320px, 1.45fr);
+}
+
+.occurrence-full-row {
+  grid-column: 1 / -1;
+}
+
+.occurrence-staff-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.occurrence-staff-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(27, 96, 155, 0.14);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.occurrence-staff-option input {
+  width: 16px;
+  height: 16px;
+  box-shadow: none;
+}
+
+.occurrence-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 92px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.severity-baixa,
+.status-aberta {
+  background: #e9f7ef;
+  color: #22764a;
+}
+
+.severity-media,
+.status-em-acompanhamento {
+  background: #eef6ff;
+  color: var(--brand-blue);
+}
+
+.severity-alta {
+  background: #fff5df;
+  color: #9a6200;
+}
+
+.severity-critica,
+.status-cancelada {
+  background: #fff0f2;
+  color: var(--brand-red);
+}
+
+.status-resolvida {
+  background: #e8f2ff;
+  color: var(--brand-blue-dark);
+}
+
+.compact-filter {
+  min-width: 160px;
+  flex: 1 1 160px;
+}
+
+.search-toolbar:has(.occurrence-date-filter) {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) 140px 140px 190px auto;
+  align-items: end;
+}
+
+.search-toolbar:has(.occurrence-date-filter) .search-field {
+  width: 100%;
+  min-width: 360px;
+}
+
+.search-toolbar:has(.occurrence-date-filter) .compact-filter:not(.occurrence-date-filter) {
+  width: 100%;
+  min-width: 170px;
+}
+
+.search-toolbar:has(.occurrence-date-filter) .search-field,
+.search-toolbar:has(.occurrence-date-filter) .search-filter-field {
+  display: grid;
+  grid-template-rows: 16px 41px;
+  align-content: end;
+  row-gap: 6px;
+  justify-content: stretch;
+  min-width: 0;
+}
+
+.search-toolbar:has(.occurrence-date-filter) label {
+  display: flex;
+  align-items: center;
+  min-height: 16px;
+  line-height: 1.15;
+  margin-bottom: 0;
+}
+
+.search-toolbar:has(.occurrence-date-filter) input,
+.search-toolbar:has(.occurrence-date-filter) select,
+.search-toolbar:has(.occurrence-date-filter) .MuiOutlinedInput-root {
+  height: 41px;
+  min-height: 41px;
+}
+
+.search-toolbar:has(.occurrence-date-filter) input,
+.search-toolbar:has(.occurrence-date-filter) select,
+.search-toolbar:has(.occurrence-date-filter) .date-picker-br {
+  margin: 0 !important;
+}
+
+.compact-clear-button {
+  align-self: end;
+  min-height: 41px;
+  margin-bottom: 0;
+}
+
+.occurrence-date-filter {
+  width: 100%;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.occurrence-date-filter .date-picker-br {
+  margin: 0 !important;
+}
+
+.occurrence-date-filter .date-picker-br .MuiFormControl-root,
+.occurrence-date-filter .date-picker-br .MuiTextField-root {
+  width: 100%;
 }
 
 .date-picker-br {
@@ -2296,6 +2760,35 @@ body .MuiPickersArrowSwitcher-button {
 }
 
 @media (max-width: 960px) {
+  .search-toolbar:has(.occurrence-date-filter) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search-toolbar:has(.occurrence-date-filter) .search-field {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .occurrence-date-filter {
+    max-width: none;
+  }
+
+  .occurrence-identification-grid,
+  .occurrence-description-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .occurrence-detail-field,
+  .occurrence-description-layout .field:first-child {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .occurrence-tabs-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .topbar {
     flex-direction: column;
     align-items: flex-start;

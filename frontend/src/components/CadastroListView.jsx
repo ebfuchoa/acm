@@ -13,6 +13,7 @@ export function CadastroListView({
   renderAfterSearch,
   emptyMessage = 'Nenhum registro encontrado.',
   cadastrarLabel = 'Cadastrar',
+  searchPlaceholder = 'Digite para filtrar em qualquer coluna',
 }) {
   const [page, setPage] = useState(1)
 
@@ -44,7 +45,7 @@ export function CadastroListView({
             <input
               value={searchTerm || ''}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Digite para filtrar em qualquer coluna"
+              placeholder={searchPlaceholder}
             />
           </div>
           {renderAfterSearch ? renderAfterSearch() : null}

@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.application import schemas
-from app.domain.enums import AttendanceStatus, JustificationStatus, ReportStatus, UserMovementType, UserStatus
+from app.domain.enums import ReportStatus, UserMovementType, UserStatus
 from app.infrastructure.db import models
 from app.infrastructure.repositories.user_profile_sections import (
     NORMALIZED_USER_SECTION_FIELDS,
@@ -718,51 +718,6 @@ class CrudService:
         self.db.commit()
 
 
-class AttendanceService:
-    def __init__(self, db: Session):
-        self.db = db
-
-    def register(self, payload: schemas.AttendanceCreate) -> models.Attendance:
-        attendance = models.Attendance(**payload.model_dump())
-        self.db.add(attendance)
-        self.db.commit()
-        self.db.refresh(attendance)
-        return attendance
-
-    def bulk_register(self, payloads: list[schemas.AttendanceCreate]) -> list[models.Attendance]:
-        rows = [models.Attendance(**item.model_dump()) for item in payloads]
-        self.db.add_all(rows)
-        self.db.commit()
-        for row in rows:
-            self.db.refresh(row)
-        return rows
-
-    def justify_absence(self, payload: schemas.JustificationCreate) -> models.AbsenceJustification:
-        attendance = self.db.get(models.Attendance, payload.attendance_id)
-        if attendance is None or attendance.status != AttendanceStatus.ABSENT:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Justificativa só pode ser criada para falta registrada.",
-            )
-        justification = models.AbsenceJustification(**payload.model_dump())
-        attendance.status = AttendanceStatus.JUSTIFIED_ABSENT
-        self.db.add(justification)
-        self.db.commit()
-        self.db.refresh(justification)
-        return justification
-
-    def decide_justification(
-        self, justification_id: int, payload: schemas.JustificationDecision
-    ) -> models.AbsenceJustification:
-        item = self.db.get(models.AbsenceJustification, justification_id)
-        if item is None:
-            raise HTTPException(status_code=404, detail="Justificativa não encontrada.")
-        item.status = payload.status
-        self.db.commit()
-        self.db.refresh(item)
-        return item
-
-
 class ReportService:
     def __init__(self, db: Session):
         self.db = db
@@ -995,4 +950,3 @@ class GroupClassificationService:
             return
         self.db.delete(row)
         self.db.commit()
-

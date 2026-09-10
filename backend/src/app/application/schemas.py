@@ -1,11 +1,13 @@
 ﻿from datetime import date, datetime
 
+from datetime import time
+
 import re
 import unicodedata
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.domain.enums import AttendanceStatus, JustificationStatus, ReportStatus, UserStatus
+from app.domain.enums import ReportStatus, UserStatus
 
 
 class BaseSchema(BaseModel):
@@ -1014,17 +1016,6 @@ class GroupClassificationLinkPayload(BaseSchema):
     group_id: int
 
 
-class AttendanceCreate(BaseSchema):
-    user_id: int
-    activity_id: int
-    attendance_date: date
-    status: AttendanceStatus
-
-
-class AttendanceRead(AttendanceCreate):
-    id: int
-
-
 class FrequenciaGrupoRead(BaseSchema):
     id: int
     nome: str
@@ -1044,6 +1035,7 @@ class FrequenciaUsuarioRead(BaseSchema):
 class FrequenciaSemanaUsuarioRead(BaseSchema):
     usuario_id: int
     dias: dict[str, bool]
+    justificativa: str | None = None
 
 
 class FrequenciaSemanaRead(BaseSchema):
@@ -1056,6 +1048,15 @@ class FrequenciaSemanaRead(BaseSchema):
 class FrequenciaSemanaUsuarioPayload(BaseSchema):
     usuario_id: int
     dias: dict[str, bool]
+    justificativa: str | None = Field(default=None, max_length=500)
+
+    @field_validator("justificativa")
+    @classmethod
+    def normalize_justificativa(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = " ".join(value.strip().split())
+        return cleaned or None
 
 
 class FrequenciaSemanaSavePayload(BaseSchema):
@@ -1065,21 +1066,240 @@ class FrequenciaSemanaSavePayload(BaseSchema):
     frequencias: list[FrequenciaSemanaUsuarioPayload]
 
 
-class JustificationCreate(BaseSchema):
-    attendance_id: int
-    reason: str = Field(min_length=5)
-    author_name: str
-    justification_date: date
-    attachment_url: str | None = None
+OCCURRENCE_SEVERITIES = {"Baixa", "Média", "Alta", "Crítica"}
+OCCURRENCE_STATUSES = {"Aberta", "Em acompanhamento", "Resolvida", "Cancelada"}
+OCCURRENCE_SHIFTS = {"Manhã", "Tarde"}
+OCCURRENCE_LOCATIONS = {
+    "Recepção",
+    "Sala de atendimento",
+    "Sala administrativa",
+    "Área externa",
+    "Banheiro",
+    "Cozinha",
+    "Corredor",
+    "Outro",
+}
+OCCURRENCE_PERSON_TYPES = {
+    "Usuário ACM",
+    "Funcionário",
+    "Visitante",
+    "Familiar",
+    "Pessoa externa",
+    "Pessoa não identificada",
+}
 
 
-class JustificationDecision(BaseSchema):
-    status: JustificationStatus
+def normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = " ".join(value.strip().split())
+    return cleaned or None
 
 
-class JustificationRead(JustificationCreate):
+def normalize_required_text(value: str) -> str:
+    cleaned = " ".join(value.strip().split())
+    if not cleaned:
+        raise ValueError("Campo obrigatório.")
+    return cleaned
+
+
+class OccurrenceCategoryRead(BaseSchema):
     id: int
-    status: JustificationStatus
+    name: str
+
+
+class OccurrencePersonPayload(BaseSchema):
+    person_type: str = Field(min_length=1, max_length=40)
+    user_id: int | None = None
+    person_name: str | None = Field(default=None, max_length=200)
+    notes: str | None = None
+
+    @field_validator("person_type")
+    @classmethod
+    def validate_person_type(cls, value: str) -> str:
+        cleaned = normalize_required_text(value)
+        if cleaned not in OCCURRENCE_PERSON_TYPES:
+            raise ValueError("Tipo de pessoa inválido.")
+        return cleaned
+
+    @field_validator("person_name", "notes")
+    @classmethod
+    def normalize_text_fields(cls, value: str | None) -> str | None:
+        return normalize_optional_text(value)
+
+    @model_validator(mode="after")
+    def validate_person_reference(self):
+        if self.person_type == "Usuário ACM" and not self.user_id:
+            raise ValueError("Selecione o usuário ACM envolvido.")
+        if self.person_type == "Familiar" and not self.user_id:
+            raise ValueError("Selecione o usuário ACM vinculado ao familiar.")
+        if self.person_type != "Usuário ACM" and not self.person_name and self.person_type != "Pessoa não identificada":
+            raise ValueError("Informe o nome da pessoa envolvida.")
+        return self
+
+
+class OccurrenceExternalServicePayload(BaseSchema):
+    service_type: str = Field(min_length=1, max_length=80)
+    service_name: str | None = Field(default=None, max_length=120)
+    called_at: time | None = None
+    protocol: str | None = Field(default=None, max_length=80)
+    notes: str | None = None
+
+    @field_validator("service_type")
+    @classmethod
+    def validate_service_type(cls, value: str) -> str:
+        return normalize_required_text(value)
+
+    @field_validator("service_name", "protocol", "notes")
+    @classmethod
+    def normalize_text_fields(cls, value: str | None) -> str | None:
+        return normalize_optional_text(value)
+
+
+class OccurrenceBase(BaseSchema):
+    occurrence_date: date
+    occurrence_shift: str = Field(min_length=1, max_length=20)
+    location: str = Field(min_length=1, max_length=80)
+    location_details: str | None = Field(default=None, max_length=150)
+    category_id: int
+    severity: str = Field(min_length=1, max_length=20)
+    description: str = Field(min_length=1)
+    actions_taken: str | None = None
+    status: str = "Aberta"
+    resolution: str | None = None
+    additional_notes: str | None = None
+    cancellation_reason: str | None = None
+    people: list[OccurrencePersonPayload] = Field(default_factory=list)
+    external_services: list[OccurrenceExternalServicePayload] = Field(default_factory=list)
+    staff_ids: list[int] = Field(default_factory=list)
+
+    @field_validator("location")
+    @classmethod
+    def validate_location(cls, value: str) -> str:
+        cleaned = normalize_required_text(value)
+        if cleaned not in OCCURRENCE_LOCATIONS:
+            raise ValueError("Local inválido.")
+        return cleaned
+
+    @field_validator("severity")
+    @classmethod
+    def validate_severity(cls, value: str) -> str:
+        cleaned = normalize_required_text(value)
+        if cleaned not in OCCURRENCE_SEVERITIES:
+            raise ValueError("Gravidade inválida.")
+        return cleaned
+
+    @field_validator("occurrence_shift")
+    @classmethod
+    def validate_occurrence_shift(cls, value: str) -> str:
+        cleaned = normalize_required_text(value)
+        if cleaned not in OCCURRENCE_SHIFTS:
+            raise ValueError("Turno inválido.")
+        return cleaned
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        cleaned = normalize_required_text(value)
+        if cleaned not in OCCURRENCE_STATUSES:
+            raise ValueError("Status inválido.")
+        return cleaned
+
+    @field_validator("location_details", "actions_taken", "resolution", "additional_notes", "cancellation_reason")
+    @classmethod
+    def normalize_optional_fields(cls, value: str | None) -> str | None:
+        return normalize_optional_text(value)
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str) -> str:
+        return normalize_required_text(value)
+
+    @field_validator("staff_ids")
+    @classmethod
+    def normalize_staff_ids(cls, value: list[int]) -> list[int]:
+        return list(dict.fromkeys(value))
+
+    @model_validator(mode="after")
+    def validate_status_requirements(self):
+        if self.location == "Outro" and not self.location_details:
+            raise ValueError("Informe o local quando selecionar Outro.")
+        if self.status == "Resolvida" and not self.resolution:
+            raise ValueError("Informe o desfecho/resolução para ocorrência resolvida.")
+        if self.status == "Cancelada" and not self.cancellation_reason:
+            raise ValueError("Informe o motivo do cancelamento.")
+        return self
+
+
+class OccurrenceCreate(OccurrenceBase):
+    pass
+
+
+class OccurrenceUpdate(OccurrenceBase):
+    pass
+
+
+class OccurrencePersonRead(OccurrencePersonPayload):
+    id: int
+    user_name: str | None = None
+
+
+class OccurrenceExternalServiceRead(OccurrenceExternalServicePayload):
+    id: int
+
+
+class OccurrenceStaffRead(BaseSchema):
+    collaborator_id: int
+    collaborator_name: str | None = None
+
+
+class OccurrenceHistoryRead(BaseSchema):
+    id: int
+    action: str
+    description: str
+    performed_by: int | None = None
+    performer_name: str | None = None
+    created_at: datetime | None = None
+
+
+class OccurrenceRead(BaseSchema):
+    id: int
+    number: str
+    unit_id: int
+    unit_name: str | None = None
+    occurrence_date: date
+    occurrence_shift: str
+    location: str
+    location_details: str | None = None
+    category_id: int
+    category_name: str | None = None
+    severity: str
+    description: str
+    actions_taken: str | None = None
+    status: str
+    resolution: str | None = None
+    additional_notes: str | None = None
+    cancellation_reason: str | None = None
+    created_by: int
+    creator_name: str | None = None
+    updated_by: int | None = None
+    resolved_by: int | None = None
+    cancelled_by: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    resolved_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    people: list[OccurrencePersonRead] = Field(default_factory=list)
+    external_services: list[OccurrenceExternalServiceRead] = Field(default_factory=list)
+    staff: list[OccurrenceStaffRead] = Field(default_factory=list)
+    history: list[OccurrenceHistoryRead] = Field(default_factory=list)
+
+
+class OccurrenceListResponse(BaseSchema):
+    items: list[OccurrenceRead]
+    total: int
+    page: int
+    page_size: int
 
 
 class ReportCreate(BaseSchema):
