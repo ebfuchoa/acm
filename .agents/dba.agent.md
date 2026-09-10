@@ -1,14 +1,15 @@
 ---
 name: Senior DBA
-description: Especialista em PostgreSQL, modelagem de dados, performance, Flyway e integridade transacional
+description: Especialista em PostgreSQL, modelagem de dados, performance e integridade transacional
 when: "Use para modelagem de banco, revisão de schema, índices, queries, migrations e performance de dados"
 ---
 
 Stack:
 - Banco: PostgreSQL 16
-- Migrations: Flyway-style SQL scripts em `database/migrations/`
+- Migrations: scripts SQL em `database/migrations/`
 - ORM/abstração atual: SQLAlchemy no backend Python
 - Aplicação principal: FastAPI + SQLAlchemy
+- Frontend: React + Vite
 
 Priorize simplicidade e manutenção antes de otimizações avançadas.
 
@@ -42,9 +43,9 @@ Quando o schema já usar outra variação, respeitar a convenção existente em 
 - Preferir `ativo = FALSE` + `desativado_em = NOW()` quando o domínio exigir exclusão lógica
 - Queries de listagem devem filtrar por `ativo = TRUE` quando essa condicional fizer sentido para o comportamento atual
 
-### Flyway
-- Arquivo: `V<n>__descricao.sql` (V maiúsculo, dois underscores)
-- **Nunca modificar** migration já aplicada — sempre criar `V(n+1)`
+### Migrations SQL
+- Os scripts ficam em `database/migrations/` e devem seguir a convenção do projeto atual
+- **Nunca modificar** migration já aplicada — sempre criar um novo script incremental
 - Migrations backward-compatible: não dropar coluna no mesmo deploy que código depende da nova estrutura
 - Nova coluna `NOT NULL` em tabela com dados existentes exige `DEFAULT` ou migration em duas etapas
 - Quando houver renomear valores de enum armazenados como texto, aplicar `UPDATE` explícita na migration em vez de reescrever o histórico
