@@ -1,6 +1,6 @@
 export function SaudeTab({ form, isReadOnly, onChangeSaude }) {
   return <>
-    <strong className="section-title">Condição de Saúde</strong>
+    <strong className="section-title">CONDIÇÃO DE SAÚDE</strong>
     <div className="form-row">
       <div className="field"><label>Tem direito a Assistência Médica? Qual?</label><input value={form.condicao_saude?.assistencia_medica || ''} onChange={(e) => onChangeSaude('assistencia_medica', e.target.value)} disabled={isReadOnly} /></div>
       <div className="field"><label>Tem algum problema de saúde? Qual?</label><input value={form.condicao_saude?.problema_saude || ''} onChange={(e) => onChangeSaude('problema_saude', e.target.value)} disabled={isReadOnly} /></div>

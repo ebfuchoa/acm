@@ -835,6 +835,27 @@ class UserSocialUnit(Base):
     social_unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
 
 
+class Local(Base):
+    __tablename__ = "local"
+
+    id: Mapped[int] = mapped_column("id", Integer, primary_key=True)
+    name: Mapped[str] = mapped_column("nome", String(120))
+    unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
+    is_active: Mapped[bool] = mapped_column("ativo", Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column("created_at", DateTime, default=datetime.utcnow, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        "updated_at",
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=datetime.utcnow,
+    )
+    created_by: Mapped[int | None] = mapped_column("created_by", ForeignKey("colaborador.id"), nullable=True)
+    updated_by: Mapped[int | None] = mapped_column("updated_by", ForeignKey("colaborador.id"), nullable=True)
+
+    unit: Mapped[Unit] = relationship("Unit")
+
+
 class DonationCatalog(Base):
     __tablename__ = "catalogo_doacao"
 
@@ -924,9 +945,9 @@ class Occurrence(Base):
     number: Mapped[str] = mapped_column("numero", String(20), unique=True)
     unit_id: Mapped[int] = mapped_column("unidade_social_id", ForeignKey("unidade_social.id"))
     occurrence_date: Mapped[date] = mapped_column("data_ocorrencia", Date)
+    occurrence_time: Mapped[time | None] = mapped_column("hora_ocorrencia", Time, nullable=True)
     occurrence_shift: Mapped[str] = mapped_column("turno", String(20), default="Manhã", server_default="Manhã")
     location: Mapped[str] = mapped_column("local", String(80))
-    location_details: Mapped[str | None] = mapped_column("local_detalhe", String(150), nullable=True)
     category_id: Mapped[int] = mapped_column("categoria_id", ForeignKey("ocorrencia_categoria.id"))
     severity: Mapped[str] = mapped_column("gravidade", String(20))
     description: Mapped[str] = mapped_column("descricao", Text)

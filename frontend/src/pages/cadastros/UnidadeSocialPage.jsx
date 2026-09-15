@@ -108,7 +108,7 @@ export function UnidadeSocialPage() {
       <section>
         <h2>{editingId ? 'Editar Unidade Social' : 'Cadastrar Unidade Social'}</h2>
         {error && <p className="error">{error}</p>}
-        <form onSubmit={saveUnit} className="card">
+        <form onSubmit={saveUnit} className="card cadastro-form-card">
           <div className="form-row">
             <div className="field"><label>Nome da Unidade</label><input value={form.name} onChange={(e) => onChange('name', e.target.value)} required />{fieldErrors.name && <p className="error">{fieldErrors.name}</p>}</div>
             <div className="field"><label>Endereço</label><input value={form.address} onChange={(e) => onChange('address', e.target.value)} required />{fieldErrors.address && <p className="error">{fieldErrors.address}</p>}</div>
@@ -157,7 +157,5 @@ export function UnidadeSocialPage() {
     </>
   )
 }
-
-
 
 

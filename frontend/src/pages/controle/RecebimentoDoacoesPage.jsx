@@ -321,7 +321,7 @@ export function RecebimentoDoacoesPage() {
       <section>
         <h2>Recebimento de Doações</h2>
         {error && <p className="error">{error}</p>}
-        <form className="card donation-receipt-form" onSubmit={save} noValidate>
+        <form className="card cadastro-form-card donation-receipt-form" onSubmit={save} noValidate>
           <fieldset className="form-section donation-section donation-data-section">
             <legend>Doação</legend>
             <div className="form-row">

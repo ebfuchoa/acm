@@ -43,9 +43,10 @@ def test_occurrence_cancelled_requires_cancellation_reason() -> None:
         OccurrenceCreate(**payload)
 
 
-def test_occurrence_other_location_requires_details() -> None:
+def test_occurrence_create_normalizes_dynamic_location() -> None:
     payload = valid_occurrence_payload()
-    payload["location"] = "Outro"
+    payload["location"] = "  Sala   Multiuso  "
 
-    with pytest.raises(ValidationError, match="local"):
-        OccurrenceCreate(**payload)
+    occurrence = OccurrenceCreate(**payload)
+
+    assert occurrence.location == "Sala Multiuso"

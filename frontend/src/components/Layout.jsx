@@ -70,6 +70,7 @@ export function Layout({ children }) {
               {canSeeUnits && <NavLink to="/cadastros/unidade-social" className="sub-nav-item" onClick={() => openListView('unidade-social')}>Unidade social</NavLink>}
               {canSeeCollaborators && <NavLink to="/cadastros/colaboradores" className="sub-nav-item" onClick={() => openListView('colaboradores')}>Colaboradores</NavLink>}
               {canSeeUsuario && <NavLink to="/cadastros/usuario" className="sub-nav-item" onClick={() => openListView('usuarios')}>Usuário</NavLink>}
+              <NavLink to="/cadastros/locais" className="sub-nav-item" onClick={() => openListView('locais')}>Local</NavLink>
               {!isSecretariaAdministrativa && canSeeGroups && <NavLink to="/cadastros/grupos" className="sub-nav-item" onClick={() => openListView('grupos')}>Grupo</NavLink>}
               {!isSecretariaAdministrativa && canSeeActivities && <NavLink to="/cadastros/atividades" className="sub-nav-item" onClick={() => openListView('atividades')}>Atividade</NavLink>}
               {canAccessUnitManagement && <NavLink to="/cadastros/catalogo-doacoes" className="sub-nav-item" onClick={() => openListView('catalogo-doacoes')}>Catálogo de doação</NavLink>}

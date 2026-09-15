@@ -541,7 +541,7 @@ export function UsuarioPage() {
       <h2>{isReadOnly ? 'Visualizar Usuário' : (editingId ? 'Editar Usuário' : 'Cadastrar Usuário')}</h2>
       {error && <p className="error">{error}</p>}
       <div className="tabs tabs-highlight">{tabs.map((t, i) => <button key={t} type="button" className={`tab-btn tab-highlight-btn ${tab === i ? 'active' : ''}`} onClick={() => setTab(i)}>{t}</button>)}</div>
-      <form onSubmit={save} className={`card ${submitAttempted ? 'was-validated' : ''}`} noValidate>
+      <form onSubmit={save} className={`card cadastro-form-card ${submitAttempted ? 'was-validated' : ''}`} noValidate>
         {tab === 0 && <IdentificacaoTab form={form} isReadOnly={isReadOnly} onChange={onChange} fieldErrors={fieldErrors} />}
         {tab === 1 && <ResponsavelTab form={form} isReadOnly={isReadOnly} onChange={onChange} fieldErrors={fieldErrors} />}
         {tab === 2 && <EnderecoResidencialTab form={form} isReadOnly={isReadOnly} onChange={onChange} fieldErrors={fieldErrors} />}

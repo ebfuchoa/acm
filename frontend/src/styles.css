@@ -1338,6 +1338,29 @@ textarea {
   letter-spacing: 0.02em;
 }
 
+.cadastro-form-card .field > label,
+.unit-social-form-card .field > label {
+  color: var(--brand-blue-dark);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.25;
+  margin-bottom: 6px;
+}
+
+.cadastro-form-card .field input,
+.cadastro-form-card .field select,
+.unit-social-form-card .field input,
+.unit-social-form-card .field select {
+  margin-top: 0;
+}
+
+.cadastro-form-card .field:focus-within > label,
+.unit-social-form-card .field:focus-within > label {
+  color: var(--brand-blue);
+}
+
 .card > label,
 .tabs + .card > label,
 .field-group > label,
@@ -1356,6 +1379,15 @@ textarea {
   content: " *";
   color: #d32f2f;
   font-weight: 700;
+}
+
+.cadastro-form-card .field:has(input[required]) > label::after,
+.cadastro-form-card .field:has(select[required]) > label::after,
+.cadastro-form-card .field:has(textarea[required]) > label::after,
+.unit-social-form-card .field:has(input[required]) > label::after,
+.unit-social-form-card .field:has(select[required]) > label::after,
+.unit-social-form-card .field:has(textarea[required]) > label::after {
+  font-weight: 600;
 }
 
 .field:has(.error) input,
@@ -1379,12 +1411,28 @@ textarea {
 }
 
 .section-title {
-  display: block;
-  margin-top: 8px;
-  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  margin-bottom: 20px;
+  padding: 10px 12px;
+  border-left: 4px solid var(--brand-blue);
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(27, 96, 155, 0.1), rgba(27, 96, 155, 0.02));
   color: var(--brand-blue-dark);
-  font-size: 0.98rem;
-  font-weight: 900;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.section-title::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, rgba(27, 96, 155, 0.3), transparent);
 }
 
 .form-section {
@@ -1440,24 +1488,26 @@ textarea {
 }
 
 .form-section legend {
-  padding: 0 10px;
+  padding: 10px 14px;
   color: var(--brand-blue-dark);
-  font-size: 0.92rem;
-  font-weight: 900;
-  letter-spacing: 0.08em;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
   text-transform: uppercase;
 }
 
 .donation-section legend {
-  background: #ffffff;
-  border: 1px solid rgba(27, 96, 155, 0.12);
-  border-radius: 999px;
-  box-shadow: 0 8px 18px rgba(13, 63, 122, 0.06);
+  width: 100%;
+  border-left: 4px solid var(--brand-blue);
+  border-radius: 10px;
+  background: linear-gradient(90deg, rgba(27, 96, 155, 0.1), rgba(27, 96, 155, 0.02));
+  box-shadow: none;
 }
 
 .donor-data-section legend {
-  color: #176f91;
-  border-color: rgba(54, 155, 194, 0.24);
+  color: var(--brand-blue-dark);
+  border-left-color: #369bc2;
 }
 
 .donor-identification-card {
@@ -2184,7 +2234,7 @@ button:hover {
 }
 
 .occurrence-top-tabs {
-  margin-bottom: -18px;
+  margin-bottom: 0;
 }
 
 .occurrence-form .form-row,
@@ -2216,10 +2266,13 @@ button:hover {
 }
 
 .occurrence-identification-grid {
-  grid-template-columns: minmax(150px, 0.85fr) minmax(130px, 0.7fr) minmax(180px, 1fr) minmax(220px, 1.15fr);
+  display: grid;
+  grid-template-columns: minmax(180px, 1.05fr) minmax(155px, 0.85fr) minmax(95px, 0.55fr) minmax(140px, 0.75fr) minmax(180px, 1.05fr);
+  gap: 14px;
+  align-items: end;
 }
 
-.occurrence-detail-field {
+.occurrence-field-wide {
   grid-column: span 2;
 }
 
@@ -2251,7 +2304,8 @@ button:hover {
   padding: 16px;
   border: 1px solid rgba(27, 96, 155, 0.12);
   border-radius: 16px;
-  background: linear-gradient(180deg, #f8fbff, #fff);
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(13, 63, 122, 0.05);
 }
 
 .occurrence-section-description {
@@ -2270,17 +2324,22 @@ button:hover {
 
 .occurrence-subsection-title {
   display: grid;
-  gap: 4px;
-  margin-bottom: 18px;
-  padding: 12px 14px 12px 0;
-  border-bottom: 1px solid rgba(27, 96, 155, 0.14);
+  gap: 6px;
+  margin-bottom: 22px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--brand-blue);
   border-radius: 12px;
-  background: transparent;
+  background: linear-gradient(90deg, rgba(27, 96, 155, 0.1), rgba(27, 96, 155, 0.02));
 }
 
 .occurrence-subsection-title h3 {
   margin: 0;
   color: var(--brand-blue-dark);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.96rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
 }
 
 .occurrence-subsection-title span {
@@ -2397,6 +2456,27 @@ button:hover {
   width: 16px;
   height: 16px;
   box-shadow: none;
+}
+
+.occurrence-service-modal {
+  max-width: 1120px;
+}
+
+.occurrence-service-modal-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.15fr) minmax(260px, 1.35fr) 120px minmax(180px, 0.9fr);
+  gap: 14px;
+  align-items: end;
+}
+
+.occurrence-service-notes {
+  margin-top: 14px;
+}
+
+.occurrence-service-notes textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
 }
 
 .occurrence-badge {
@@ -2606,8 +2686,12 @@ body .MuiPickersArrowSwitcher-button {
 }
 
 .tabs-highlight {
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 0;
+  border-color: var(--line);
+  border-bottom: 0;
+  background: #eef7ff;
+  gap: 6px;
+  margin-bottom: 0;
+  padding: 14px 14px 0;
 }
 
 .tab-highlight-btn {
@@ -2615,6 +2699,10 @@ body .MuiPickersArrowSwitcher-button {
   color: #374151;
   border: 1px solid #cbd5e1;
   border-bottom: 0;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.93rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .tab-highlight-btn.active {
@@ -2622,7 +2710,18 @@ body .MuiPickersArrowSwitcher-button {
   color: #fff;
   border-color: var(--accent);
   font-weight: 700;
-  box-shadow: 0 2px 8px rgba(13, 63, 122, 0.2);
+  box-shadow: 0 2px 8px rgba(13, 63, 122, 0.14);
+}
+
+.tabs-highlight + .cadastro-form-card {
+  margin-top: 0;
+  background: #ffffff;
+  border-color: var(--line);
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  padding-top: 22px;
+  box-shadow: 0 8px 22px rgba(13, 63, 122, 0.05);
 }
 
 .modal-overlay {
@@ -2778,7 +2877,7 @@ body .MuiPickersArrowSwitcher-button {
     grid-template-columns: 1fr;
   }
 
-  .occurrence-detail-field,
+  .occurrence-field-wide,
   .occurrence-description-layout .field:first-child {
     grid-column: auto;
     grid-row: auto;
@@ -2787,6 +2886,10 @@ body .MuiPickersArrowSwitcher-button {
   .occurrence-tabs-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .occurrence-service-modal-row {
+    grid-template-columns: 1fr;
   }
 
   .topbar {

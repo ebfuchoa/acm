@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { DashboardPage } from './pages/dashboard'
-import { UnidadeSocialPage, UsuarioPage, AtividadesPage, GruposPage, InscricoesPage, ColaboradoresPage, CatalogoDoacoesPage } from './pages/cadastros'
+import { UnidadeSocialPage, UsuarioPage, AtividadesPage, GruposPage, InscricoesPage, ColaboradoresPage, CatalogoDoacoesPage, LocaisPage } from './pages/cadastros'
 import { AtendimentosPage, FrequenciaPage, RelatoriosPage, ParticipantesPage, AcompanhamentoUnidadePage } from './pages/gestao'
 import { ClassificacaoGrupoPage } from './pages/classificacao/ClassificacaoGrupoPage'
 import { RecebimentoDoacoesPage } from './pages/controle/RecebimentoDoacoesPage'
@@ -92,6 +92,7 @@ function ProtectedApp() {
         <Route path="/cadastros/colaboradores" element={<ColaboradoresPage />} />
         <Route path="/cadastros/atividades" element={<AtividadesPage />} />
         <Route path="/cadastros/grupos" element={<GruposPage />} />
+        <Route path="/cadastros/locais" element={<LocaisPage />} />
         <Route path="/cadastros/inscricoes" element={<InscricoesPage />} />
         <Route path="/cadastros/catalogo-doacoes" element={<DonationCatalogRoute><CatalogoDoacoesPage /></DonationCatalogRoute>} />
         <Route path="/classificacao-grupo" element={<ClassificacaoGrupoPage />} />

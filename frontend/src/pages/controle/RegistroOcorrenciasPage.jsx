@@ -6,7 +6,6 @@ import { CadastroListView } from '../../components/CadastroListView'
 import { DatePickerBr } from '../../components/DatePickerBr'
 import { brToIsoDate, isoToBrDate } from '../../utils/dateBr'
 
-const LOCATIONS = ['Recepção', 'Sala de atendimento', 'Sala administrativa', 'Área externa', 'Banheiro', 'Cozinha', 'Corredor', 'Outro']
 const SEVERITIES = ['Baixa', 'Média', 'Alta', 'Crítica']
 const STATUSES = ['Aberta', 'Em acompanhamento', 'Resolvida', 'Cancelada']
 const OCCURRENCE_SHIFTS = ['Manhã', 'Tarde']
@@ -29,12 +28,13 @@ function localDateBrValue() {
 
 const emptyForm = {
   number: '',
+  unit_id: '',
   unit_name: '',
   creator_name: '',
   occurrence_date: localDateBrValue(),
+  occurrence_time: '',
   occurrence_shift: 'Manhã',
   location: '',
-  location_details: '',
   category_id: '',
   severity: 'Baixa',
   description: '',
@@ -46,7 +46,24 @@ const emptyForm = {
   people: [],
   external_services: [],
   staff_ids: [],
+  staff_names: [],
   history: [],
+}
+
+const emptyPersonDraft = {
+  person_type: 'Usuário ACM',
+  user_id: '',
+  user_name: '',
+  person_name: '',
+  notes: '',
+}
+
+const emptyExternalServiceDraft = {
+  service_type: 'SAMU',
+  service_name: '',
+  called_at: '',
+  protocol: '',
+  notes: '',
 }
 
 function normalizeProfile(value) {
@@ -77,6 +94,12 @@ function formatTime(value) {
   return String(value || '').slice(0, 5) || '-'
 }
 
+function maskHour(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 4)
+  if (digits.length <= 2) return digits
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`
+}
+
 function truncate(value, size = 80) {
   const text = String(value || '')
   return text.length > size ? `${text.slice(0, size)}...` : text
@@ -97,7 +120,9 @@ export function RegistroOcorrenciasPage() {
   const [rows, setRows] = useState([])
   const [categories, setCategories] = useState([])
   const [users, setUsers] = useState([])
-  const [collaborators, setCollaborators] = useState([])
+  const [locations, setLocations] = useState([])
+  const [filterLocations, setFilterLocations] = useState([])
+  const [units, setUnits] = useState([])
   const [filters, setFilters] = useState(emptyFilters)
   const [form, setForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
@@ -107,6 +132,12 @@ export function RegistroOcorrenciasPage() {
   const [message, setMessage] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [occurrenceTab, setOccurrenceTab] = useState('identification')
+  const [personDraft, setPersonDraft] = useState(emptyPersonDraft)
+  const [personEditIndex, setPersonEditIndex] = useState(null)
+  const [isPersonModalOpen, setIsPersonModalOpen] = useState(false)
+  const [externalServiceDraft, setExternalServiceDraft] = useState(emptyExternalServiceDraft)
+  const [externalServiceEditIndex, setExternalServiceEditIndex] = useState(null)
+  const [isExternalServiceModalOpen, setIsExternalServiceModalOpen] = useState(false)
 
   useEffect(() => {
     function showList() {
@@ -118,6 +149,8 @@ export function RegistroOcorrenciasPage() {
       setMessage('')
       setFieldErrors({})
       setOccurrenceTab('identification')
+      closePersonModal()
+      closeExternalServiceModal()
     }
     window.addEventListener('registro-ocorrencias:list', showList)
     return () => window.removeEventListener('registro-ocorrencias:list', showList)
@@ -127,13 +160,35 @@ export function RegistroOcorrenciasPage() {
     const results = await Promise.allSettled([
       api('/ocorrencias/categorias'),
       api('/ocorrencias/usuarios'),
-      api('/ocorrencias/colaboradores'),
+      auth?.is_admin ? api('/gestao-unidades') : Promise.resolve([]),
     ])
     if (results[0].status === 'fulfilled') setCategories(results[0].value || [])
     if (results[1].status === 'fulfilled') setUsers(results[1].value || [])
-    if (results[2].status === 'fulfilled') setCollaborators(results[2].value || [])
+    if (results[2].status === 'fulfilled') setUnits(results[2].value || [])
     const rejected = results.find((item) => item.status === 'rejected')
     if (rejected) throw rejected.reason
+  }
+
+  async function loadLocations(unitId = form.unit_id) {
+    const params = new URLSearchParams({ page: '1', page_size: '100' })
+    if (auth?.is_admin) {
+      if (!unitId) {
+        setLocations([])
+        return
+      }
+      params.set('unit_id', String(unitId))
+    } else if (auth?.social_unit_id) {
+      params.set('unit_id', String(auth.social_unit_id))
+    }
+    const data = await api(`/locais?${params.toString()}`)
+    setLocations(data.items || [])
+  }
+
+  async function loadFilterLocations() {
+    const params = new URLSearchParams({ page: '1', page_size: '100' })
+    if (!auth?.is_admin && auth?.social_unit_id) params.set('unit_id', String(auth.social_unit_id))
+    const data = await api(`/locais?${params.toString()}`)
+    setFilterLocations(data.items || [])
   }
 
   async function loadOccurrenceUsers() {
@@ -168,7 +223,14 @@ export function RegistroOcorrenciasPage() {
   useEffect(() => {
     if (!canAccess) return
     loadOptions().catch((err) => setError(err.message))
+    loadFilterLocations().catch((err) => setError(err.message))
+    if (!auth?.is_admin) loadLocations().catch((err) => setError(err.message))
   }, [])
+
+  useEffect(() => {
+    if (!canAccess || !auth?.is_admin || mode !== 'form') return
+    loadLocations(form.unit_id).catch((err) => setError(err.message))
+  }, [canAccess, auth?.is_admin, mode, form.unit_id])
 
   useEffect(() => {
     if (!canAccess || occurrenceTab !== 'people' || users.length > 0) return
@@ -199,6 +261,30 @@ export function RegistroOcorrenciasPage() {
     { key: 'status_label', label: 'Status' },
   ]
 
+  const locationOptions = useMemo(() => {
+    if (!form.location || locations.some((item) => item.name === form.location)) return locations
+    return [{ id: `current-${form.location}`, name: form.location }, ...locations]
+  }, [form.location, locations])
+
+  function formatLocationOption(item) {
+    if (auth?.is_admin && item.unit_name) return `${item.name} — ${item.unit_name}`
+    return item.name
+  }
+
+  function userNameById(userId) {
+    return users.find((user) => String(user.id) === String(userId))?.name || ''
+  }
+
+  function personUserName(person) {
+    return person.user_name || userNameById(person.user_id) || '-'
+  }
+
+  function personNameLabel(person) {
+    if (person.person_type === 'Usuário ACM') return personUserName(person)
+    if (person.person_type === 'Pessoa não identificada') return '-'
+    return person.person_name || '-'
+  }
+
   function updateFilter(key, value) {
     setFilters((current) => ({ ...current, [key]: value }))
   }
@@ -208,7 +294,11 @@ export function RegistroOcorrenciasPage() {
   }
 
   function updateForm(key, value) {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => ({
+      ...current,
+      [key]: key === 'occurrence_time' ? maskHour(value) : value,
+      ...(key === 'unit_id' ? { location: '', unit_name: units.find((unit) => String(unit.id) === String(value))?.name || '' } : {}),
+    }))
     if (fieldErrors[key]) {
       setFieldErrors((current) => {
         const next = { ...current }
@@ -218,64 +308,148 @@ export function RegistroOcorrenciasPage() {
     }
   }
 
-  function addPerson() {
-    setForm((current) => ({
-      ...current,
-      people: [...current.people, { person_type: 'Usuário ACM', user_id: '', person_name: '', notes: '' }],
-    }))
+  function resetPersonDraft() {
+    setPersonDraft(emptyPersonDraft)
+    setPersonEditIndex(null)
   }
 
-  function updatePerson(index, key, value) {
-    setForm((current) => {
-      const people = current.people.map((item, itemIndex) => {
-        if (itemIndex !== index) return item
-        const next = { ...item, [key]: value }
-        if (key === 'person_type') {
-          next.user_id = ''
-          next.person_name = ''
-        }
-        return next
+  function openPersonModal(index = null) {
+    if (index == null) {
+      resetPersonDraft()
+    } else {
+      const item = form.people[index]
+      setPersonDraft({
+        person_type: item?.person_type || 'Usuário ACM',
+        user_id: item?.user_id ? String(item.user_id) : '',
+        user_name: item?.user_name || '',
+        person_name: item?.person_name || '',
+        notes: item?.notes || '',
       })
-      return { ...current, people }
+      setPersonEditIndex(index)
+    }
+    setError('')
+    setIsPersonModalOpen(true)
+  }
+
+  function closePersonModal() {
+    setIsPersonModalOpen(false)
+    resetPersonDraft()
+  }
+
+  function updatePersonDraft(key, value) {
+    setPersonDraft((current) => {
+      const next = { ...current, [key]: value }
+      if (key === 'person_type') {
+        next.user_id = ''
+        next.user_name = ''
+        next.person_name = ''
+      }
+      if (key === 'user_id') {
+        next.user_name = userNameById(value)
+      }
+      return next
     })
+  }
+
+  function savePersonDraft() {
+    const type = personDraft.person_type
+    const requiresUser = ['Usuário ACM', 'Familiar'].includes(type)
+    const requiresName = !['Usuário ACM', 'Pessoa não identificada'].includes(type)
+    const item = {
+      person_type: type,
+      user_id: requiresUser ? personDraft.user_id : '',
+      user_name: requiresUser ? userNameById(personDraft.user_id) : '',
+      person_name: requiresName ? personDraft.person_name.trim() : '',
+      notes: personDraft.notes.trim(),
+    }
+    if (requiresUser && !item.user_id) {
+      setError('Selecione o usuário ACM da pessoa envolvida.')
+      return
+    }
+    if (requiresName && !item.person_name) {
+      setError('Informe o nome da pessoa envolvida.')
+      return
+    }
+    setForm((current) => ({
+      ...current,
+      people: personEditIndex == null
+        ? [...current.people, item]
+        : current.people.map((row, index) => (index === personEditIndex ? item : row)),
+    }))
+    closePersonModal()
   }
 
   function removePerson(index) {
     setForm((current) => ({ ...current, people: current.people.filter((_, itemIndex) => itemIndex !== index) }))
   }
 
-  function addExternalService() {
-    setForm((current) => ({
+  function resetExternalServiceDraft() {
+    setExternalServiceDraft(emptyExternalServiceDraft)
+    setExternalServiceEditIndex(null)
+  }
+
+  function openExternalServiceModal(index = null) {
+    if (index == null) {
+      resetExternalServiceDraft()
+    } else {
+      const item = form.external_services[index]
+      setExternalServiceDraft({
+        service_type: item?.service_type || 'SAMU',
+        service_name: item?.service_name || '',
+        called_at: item?.called_at || '',
+        protocol: item?.protocol || '',
+        notes: item?.notes || '',
+      })
+      setExternalServiceEditIndex(index)
+    }
+    setError('')
+    setIsExternalServiceModalOpen(true)
+  }
+
+  function closeExternalServiceModal() {
+    setIsExternalServiceModalOpen(false)
+    resetExternalServiceDraft()
+  }
+
+  function updateExternalServiceDraft(key, value) {
+    setExternalServiceDraft((current) => ({
       ...current,
-      external_services: [...current.external_services, { service_type: 'SAMU', service_name: '', called_at: '', protocol: '', notes: '' }],
+      [key]: key === 'called_at' ? maskHour(value) : value,
+      ...(key === 'service_type' && value !== 'Outro' ? { service_name: '' } : {}),
     }))
   }
 
-  function updateExternalService(index, key, value) {
+  function saveExternalServiceDraft() {
+    const item = {
+      service_type: externalServiceDraft.service_type,
+      service_name: externalServiceDraft.service_type === 'Outro' ? externalServiceDraft.service_name.trim() : '',
+      called_at: externalServiceDraft.called_at,
+      protocol: externalServiceDraft.protocol.trim(),
+      notes: externalServiceDraft.notes.trim(),
+    }
+    if (item.service_type === 'Outro' && !item.service_name) {
+      setError('Informe o nome do serviço externo.')
+      return
+    }
     setForm((current) => ({
       ...current,
-      external_services: current.external_services.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: value } : item),
+      external_services: externalServiceEditIndex == null
+        ? [...current.external_services, item]
+        : current.external_services.map((row, index) => (index === externalServiceEditIndex ? item : row)),
     }))
+    closeExternalServiceModal()
   }
 
   function removeExternalService(index) {
     setForm((current) => ({ ...current, external_services: current.external_services.filter((_, itemIndex) => itemIndex !== index) }))
   }
 
-  function toggleStaff(collaboratorId) {
-    setForm((current) => {
-      const id = Number(collaboratorId)
-      const hasId = current.staff_ids.includes(id)
-      return { ...current, staff_ids: hasId ? current.staff_ids.filter((item) => item !== id) : [...current.staff_ids, id] }
-    })
-  }
-
   function validate(payload) {
     const errors = {}
+    if (auth?.is_admin && !payload.unit_id) errors.unit_id = 'Informe a Unidade Social.'
     if (!payload.occurrence_date) errors.occurrence_date = 'Informe a data da ocorrência.'
     if (!payload.occurrence_shift) errors.occurrence_shift = 'Informe o turno.'
     if (!payload.location) errors.location = 'Informe o local.'
-    if (payload.location === 'Outro' && !payload.location_details) errors.location_details = 'Informe o local.'
     if (!payload.category_id) errors.category_id = 'Informe a categoria.'
     if (!payload.description) errors.description = 'Informe a descrição da ocorrência.'
     if (payload.status === 'Resolvida' && !payload.resolution) errors.resolution = 'Informe o desfecho/resolução.'
@@ -285,10 +459,11 @@ export function RegistroOcorrenciasPage() {
 
   function buildPayload() {
     return {
+      unit_id: auth?.is_admin && form.unit_id ? Number(form.unit_id) : null,
       occurrence_date: brToIsoDate(form.occurrence_date),
+      occurrence_time: form.occurrence_time || null,
       occurrence_shift: form.occurrence_shift,
       location: form.location,
-      location_details: form.location === 'Outro' ? form.location_details.trim() : null,
       category_id: Number(form.category_id),
       severity: form.severity,
       description: form.description.trim(),
@@ -310,7 +485,7 @@ export function RegistroOcorrenciasPage() {
         protocol: item.protocol.trim() || null,
         notes: item.notes.trim() || null,
       })),
-      staff_ids: form.staff_ids,
+      staff_ids: auth?.user_id ? [Number(auth.user_id)] : [],
     }
   }
 
@@ -318,11 +493,14 @@ export function RegistroOcorrenciasPage() {
     setMode('form')
     setEditingId(null)
     setReadOnly(false)
-    setForm({ ...emptyForm, occurrence_date: localDateBrValue() })
+    setForm({ ...emptyForm, occurrence_date: localDateBrValue(), unit_id: auth?.is_admin ? '' : String(auth?.social_unit_id || '') })
+    setLocations(auth?.is_admin ? [] : locations)
     setFieldErrors({})
     setError('')
     setMessage('')
     setOccurrenceTab('identification')
+    closePersonModal()
+    closeExternalServiceModal()
   }
 
   async function openItem(row, nextMode = 'form') {
@@ -331,12 +509,13 @@ export function RegistroOcorrenciasPage() {
       const item = await api(`/ocorrencias/${row.id}`)
       setForm({
         number: item.number || '',
+        unit_id: String(item.unit_id || ''),
         unit_name: item.unit_name || '',
         creator_name: item.creator_name || '',
         occurrence_date: isoToBrDate(item.occurrence_date) || localDateBrValue(),
+        occurrence_time: item.occurrence_time ? formatTime(item.occurrence_time) : '',
         occurrence_shift: item.occurrence_shift || 'Manhã',
         location: item.location || '',
-        location_details: item.location_details || '',
         category_id: String(item.category_id || ''),
         severity: item.severity || 'Baixa',
         description: item.description || '',
@@ -348,6 +527,7 @@ export function RegistroOcorrenciasPage() {
         people: (item.people || []).map((person) => ({
           person_type: person.person_type,
           user_id: person.user_id ? String(person.user_id) : '',
+          user_name: person.user_name || '',
           person_name: person.person_name || '',
           notes: person.notes || '',
         })),
@@ -359,6 +539,7 @@ export function RegistroOcorrenciasPage() {
           notes: service.notes || '',
         })),
         staff_ids: (item.staff || []).map((staff) => Number(staff.collaborator_id)),
+        staff_names: (item.staff || []).map((staff) => staff.collaborator_name).filter(Boolean),
         history: item.history || [],
       })
       setEditingId(item.id)
@@ -395,9 +576,12 @@ export function RegistroOcorrenciasPage() {
       setMode('list')
       setEditingId(null)
       setReadOnly(false)
-      setForm({ ...emptyForm, occurrence_date: localDateBrValue() })
+      setForm({ ...emptyForm, occurrence_date: localDateBrValue(), unit_id: auth?.is_admin ? '' : String(auth?.social_unit_id || '') })
+      setLocations(auth?.is_admin ? [] : locations)
       setError('')
       setOccurrenceTab('identification')
+      closePersonModal()
+      closeExternalServiceModal()
       await loadRows()
     } catch (err) {
       setError(err.message)
@@ -413,18 +597,18 @@ export function RegistroOcorrenciasPage() {
       <section>
         <h2>{readOnly ? 'Visualizar Ocorrência' : editingId ? 'Editar Ocorrência' : 'Registrar Ocorrência'}</h2>
         {error && <p className="error">{error}</p>}
-        <form className="card occurrence-form" onSubmit={save} noValidate>
-          <div className="tabs tabs-highlight occurrence-top-tabs">
-            <button type="button" className={`tab-btn tab-highlight-btn ${occurrenceTab === 'identification' ? 'active' : ''}`} onClick={() => setOccurrenceTab('identification')}>
-              IDENTIFICAÇÃO
-            </button>
-            <button type="button" className={`tab-btn tab-highlight-btn ${occurrenceTab === 'people' ? 'active' : ''}`} onClick={() => setOccurrenceTab('people')}>
-              PESSOAS ENVOLVIDAS
-            </button>
-            <button type="button" className={`tab-btn tab-highlight-btn ${occurrenceTab === 'services' ? 'active' : ''}`} onClick={() => setOccurrenceTab('services')}>
-              ACIONAMENTOS EXTERNOS
-            </button>
-          </div>
+        <div className="tabs tabs-highlight occurrence-top-tabs">
+          <button type="button" className={`tab-btn tab-highlight-btn ${occurrenceTab === 'identification' ? 'active' : ''}`} onClick={() => setOccurrenceTab('identification')}>
+            Identificação
+          </button>
+          <button type="button" className={`tab-btn tab-highlight-btn ${occurrenceTab === 'people' ? 'active' : ''}`} onClick={() => setOccurrenceTab('people')}>
+            Pessoas envolvidas
+          </button>
+          <button type="button" className={`tab-btn tab-highlight-btn ${occurrenceTab === 'services' ? 'active' : ''}`} onClick={() => setOccurrenceTab('services')}>
+            Acionamentos externos
+          </button>
+        </div>
+        <form className="card cadastro-form-card occurrence-form" onSubmit={save} noValidate>
           {occurrenceTab === 'identification' && (
             <>
           <div className="occurrence-section">
@@ -437,19 +621,39 @@ export function RegistroOcorrenciasPage() {
               </div>
             )}
             <div className="form-row occurrence-identification-grid">
+              {auth?.is_admin && (
+                <div className="field">
+                  <label>Unidade social</label>
+                  <select value={form.unit_id} disabled={readOnly || loading} onChange={(event) => updateForm('unit_id', event.target.value)}>
+                    <option value="">Selecione</option>
+                    {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
+                  </select>
+                  {fieldErrors.unit_id && <p className="error">{fieldErrors.unit_id}</p>}
+                </div>
+              )}
               <div className="field">
-                <DatePickerBr label="DATA DA OCORRÊNCIA" value={form.occurrence_date} onChange={(value) => updateForm('occurrence_date', value)} disabled={readOnly || loading} />
+                <DatePickerBr label="Data da ocorrência" value={form.occurrence_date} onChange={(value) => updateForm('occurrence_date', value)} disabled={readOnly || loading} />
                 {fieldErrors.occurrence_date && <p className="error">{fieldErrors.occurrence_date}</p>}
               </div>
               <div className="field">
-                <label>TURNO</label>
+                <label>Hora</label>
+                <input
+                  value={form.occurrence_time}
+                  maxLength={5}
+                  placeholder="HH:MM"
+                  disabled={readOnly || loading}
+                  onChange={(event) => updateForm('occurrence_time', event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Turno</label>
                 <select value={form.occurrence_shift} disabled={readOnly || loading} onChange={(event) => updateForm('occurrence_shift', event.target.value)}>
                   {OCCURRENCE_SHIFTS.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
                 {fieldErrors.occurrence_shift && <p className="error">{fieldErrors.occurrence_shift}</p>}
               </div>
               <div className="field">
-                <label>CATEGORIA</label>
+                <label>Categoria</label>
                 <select value={form.category_id} disabled={readOnly || loading} onChange={(event) => updateForm('category_id', event.target.value)}>
                   <option value="">Selecione</option>
                   {categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
@@ -457,26 +661,21 @@ export function RegistroOcorrenciasPage() {
                 {fieldErrors.category_id && <p className="error">{fieldErrors.category_id}</p>}
               </div>
               <div className="field">
-                <label>GRAVIDADE</label>
+                <label>Gravidade</label>
                 <select value={form.severity} disabled={readOnly || loading} onChange={(event) => updateForm('severity', event.target.value)}>
                   {SEVERITIES.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
               </div>
-              <div className="field">
-                <label>LOCAL</label>
-                <select value={form.location} disabled={readOnly || loading} onChange={(event) => updateForm('location', event.target.value)}>
+              <div className="field occurrence-field-wide">
+                <label>Local</label>
+                <select value={form.location} disabled={readOnly || loading || locations.length === 0} onChange={(event) => updateForm('location', event.target.value)}>
                   <option value="">Selecione</option>
-                  {LOCATIONS.map((item) => <option key={item} value={item}>{item}</option>)}
+                  {locationOptions.map((item) => <option key={item.id} value={item.name}>{formatLocationOption(item)}</option>)}
                 </select>
                 {fieldErrors.location && <p className="error">{fieldErrors.location}</p>}
               </div>
-              <div className="field occurrence-detail-field">
-                <label>DETALHE DO LOCAL</label>
-                <input value={form.location_details} maxLength={150} disabled={readOnly || loading || form.location !== 'Outro'} onChange={(event) => updateForm('location_details', event.target.value)} />
-                {fieldErrors.location_details && <p className="error">{fieldErrors.location_details}</p>}
-              </div>
               <div className="field">
-                <label>STATUS</label>
+                <label>Status</label>
                 <select value={form.status} disabled={readOnly || loading} onChange={(event) => updateForm('status', event.target.value)}>
                   {STATUSES.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
@@ -491,29 +690,29 @@ export function RegistroOcorrenciasPage() {
             </div>
             <div className="occurrence-description-layout">
               <div className="field">
-                <label>DESCRIÇÃO DA OCORRÊNCIA</label>
+                <label>Descrição da ocorrência</label>
                 <textarea className="occurrence-main-textarea" rows={6} value={form.description} disabled={readOnly || loading} onChange={(event) => updateForm('description', event.target.value)} />
                 {fieldErrors.description && <p className="error">{fieldErrors.description}</p>}
               </div>
               <div className="field">
-                <label>PROVIDÊNCIAS TOMADAS</label>
+                <label>Providências tomadas</label>
                 <textarea rows={4} value={form.actions_taken} disabled={readOnly || loading} onChange={(event) => updateForm('actions_taken', event.target.value)} />
               </div>
               <div className="field">
-                <label>OBSERVAÇÕES ADICIONAIS</label>
+                <label>Observações adicionais</label>
                 <textarea rows={4} value={form.additional_notes} disabled={readOnly || loading} onChange={(event) => updateForm('additional_notes', event.target.value)} />
               </div>
             </div>
             {form.status === 'Resolvida' && (
               <div className="field">
-                <label>DESFECHO / RESOLUÇÃO</label>
+                <label>Desfecho / resolução</label>
                 <textarea rows={3} value={form.resolution} disabled={readOnly || loading} onChange={(event) => updateForm('resolution', event.target.value)} />
                 {fieldErrors.resolution && <p className="error">{fieldErrors.resolution}</p>}
               </div>
             )}
             {form.status === 'Cancelada' && (
               <div className="field">
-                <label>MOTIVO DO CANCELAMENTO</label>
+                <label>Motivo do cancelamento</label>
                 <textarea rows={3} value={form.cancellation_reason} disabled={readOnly || loading} onChange={(event) => updateForm('cancellation_reason', event.target.value)} />
                 {fieldErrors.cancellation_reason && <p className="error">{fieldErrors.cancellation_reason}</p>}
               </div>
@@ -526,39 +725,72 @@ export function RegistroOcorrenciasPage() {
             <div className="occurrence-section">
               <div className="occurrence-section-header">
                 <h3>Pessoas envolvidas</h3>
-                {!readOnly && <button type="button" className="btn btn-ghost" onClick={addPerson}>Adicionar pessoa</button>}
+                {!readOnly && <button type="button" onClick={() => openPersonModal()}>Adicionar pessoa</button>}
               </div>
               <div className="occurrence-tab-panel">
-                {form.people.length === 0 && <p className="empty-state">Nenhuma pessoa envolvida informada.</p>}
-                {form.people.map((person, index) => (
-                  <div className="occurrence-repeat-card" key={`person-${index}`}>
-                    <div className="form-row occurrence-person-grid">
-                      <div className="field">
-                        <label>TIPO</label>
-                        <select value={person.person_type} disabled={readOnly || loading} onChange={(event) => updatePerson(index, 'person_type', event.target.value)}>
-                          {PERSON_TYPES.map((item) => <option key={item} value={item}>{item}</option>)}
-                        </select>
-                      </div>
-                      <div className="field">
-                        <label>USUÁRIO ACM</label>
-                        <select value={person.user_id} disabled={readOnly || loading || !['Usuário ACM', 'Familiar'].includes(person.person_type)} onChange={(event) => updatePerson(index, 'user_id', event.target.value)}>
-                          <option value="">Selecione</option>
-                          {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-                        </select>
-                      </div>
-                      <div className="field">
-                        <label>NOME</label>
-                        <input value={person.person_name} maxLength={200} disabled={readOnly || loading || ['Usuário ACM', 'Pessoa não identificada'].includes(person.person_type)} onChange={(event) => updatePerson(index, 'person_name', event.target.value)} />
-                      </div>
-                      <div className="field occurrence-full-row">
-                        <label>OBSERVAÇÃO</label>
-                        <textarea rows={3} value={person.notes} disabled={readOnly || loading} onChange={(event) => updatePerson(index, 'notes', event.target.value)} />
-                      </div>
-                    </div>
-                    {!readOnly && <button type="button" className="btn btn-ghost" onClick={() => removePerson(index)}>Remover pessoa</button>}
-                  </div>
-                ))}
+                <div className="table-wrap">
+                  <table className="list-table">
+                    <thead>
+                      <tr>
+                        <th>Nº</th>
+                        <th>Tipo</th>
+                        <th>Usuário ACM</th>
+                        <th>Nome</th>
+                        <th>Observação</th>
+                        {!readOnly && <th>Ações</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {form.people.length === 0 && <tr><td colSpan={readOnly ? 5 : 6}>Nenhuma pessoa envolvida informada.</td></tr>}
+                      {form.people.map((person, index) => (
+                        <tr key={`${person.person_type}-${person.user_id || person.person_name}-${index}`}>
+                          <td>{index + 1}</td>
+                          <td>{person.person_type}</td>
+                          <td>{['Usuário ACM', 'Familiar'].includes(person.person_type) ? personUserName(person) : '-'}</td>
+                          <td>{personNameLabel(person)}</td>
+                          <td>{person.notes || '-'}</td>
+                          {!readOnly && <td>
+                            <button type="button" className="btn btn-ghost" onClick={() => openPersonModal(index)}>Editar</button>
+                            <button type="button" className="btn btn-ghost" onClick={() => removePerson(index)}>Excluir</button>
+                          </td>}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+              {isPersonModalOpen && !readOnly && <div className="modal-overlay" onClick={closePersonModal}>
+                <div className="modal-card composicao-modal-card" onClick={(event) => event.stopPropagation()}>
+                  <h3>{personEditIndex == null ? 'Adicionar pessoa envolvida' : 'Editar pessoa envolvida'}</h3>
+                  <div className="composicao-modal-row">
+                    <div className="field">
+                      <label>Tipo</label>
+                      <select value={personDraft.person_type} disabled={loading} onChange={(event) => updatePersonDraft('person_type', event.target.value)}>
+                        {PERSON_TYPES.map((item) => <option key={item} value={item}>{item}</option>)}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Usuário ACM</label>
+                      <select value={personDraft.user_id} disabled={loading || !['Usuário ACM', 'Familiar'].includes(personDraft.person_type)} onChange={(event) => updatePersonDraft('user_id', event.target.value)}>
+                        <option value="">Selecione</option>
+                        {users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="field">
+                      <label>Nome</label>
+                      <input value={personDraft.person_name} maxLength={200} disabled={loading || ['Usuário ACM', 'Pessoa não identificada'].includes(personDraft.person_type)} onChange={(event) => updatePersonDraft('person_name', event.target.value)} />
+                    </div>
+                  </div>
+                  <div className="field">
+                    <label>Observação</label>
+                    <textarea rows={4} value={personDraft.notes} disabled={loading} onChange={(event) => updatePersonDraft('notes', event.target.value)} />
+                  </div>
+                  <div className="form-actions">
+                    <button type="button" className="btn btn-ghost" onClick={closePersonModal}>Cancelar</button>
+                    <button type="button" onClick={savePersonDraft}>{personEditIndex == null ? 'Adicionar' : 'Atualizar'}</button>
+                  </div>
+                </div>
+              </div>}
             </div>
             )}
 
@@ -566,57 +798,96 @@ export function RegistroOcorrenciasPage() {
             <div className="occurrence-section">
               <div className="occurrence-section-header">
                 <h3>Acionamentos externos</h3>
-                {!readOnly && <button type="button" className="btn btn-ghost" onClick={addExternalService}>Adicionar acionamento</button>}
+                {!readOnly && <button type="button" onClick={() => openExternalServiceModal()}>Adicionar acionamento</button>}
               </div>
               <div className="occurrence-tab-panel">
-                {form.external_services.length === 0 && <p className="empty-state">Nenhum serviço externo acionado.</p>}
-                {form.external_services.map((service, index) => (
-                  <div className="occurrence-repeat-card" key={`service-${index}`}>
-                    <div className="form-row form-row-4">
-                      <div className="field">
-                        <label>SERVIÇO</label>
-                        <select value={service.service_type} disabled={readOnly || loading} onChange={(event) => updateExternalService(index, 'service_type', event.target.value)}>
-                          {EXTERNAL_SERVICES.map((item) => <option key={item} value={item}>{item}</option>)}
-                        </select>
-                      </div>
-                      <div className="field">
-                        <label>NOME DO SERVIÇO</label>
-                        <input value={service.service_name} disabled={readOnly || loading || service.service_type !== 'Outro'} onChange={(event) => updateExternalService(index, 'service_name', event.target.value)} />
-                      </div>
-                      <div className="field">
-                        <label>HORÁRIO</label>
-                        <input type="time" value={service.called_at} disabled={readOnly || loading} onChange={(event) => updateExternalService(index, 'called_at', event.target.value)} />
-                      </div>
-                      <div className="field">
-                        <label>PROTOCOLO</label>
-                        <input value={service.protocol} maxLength={80} disabled={readOnly || loading} onChange={(event) => updateExternalService(index, 'protocol', event.target.value)} />
-                      </div>
+                <div className="table-wrap">
+                  <table className="list-table">
+                    <thead>
+                      <tr>
+                        <th>Nº</th>
+                        <th>Serviço</th>
+                        <th>Nome do serviço</th>
+                        <th>Horário</th>
+                        <th>Protocolo</th>
+                        <th>Observação</th>
+                        {!readOnly && <th>Ações</th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {form.external_services.length === 0 && <tr><td colSpan={readOnly ? 6 : 7}>Nenhum serviço externo acionado.</td></tr>}
+                      {form.external_services.map((service, index) => (
+                        <tr key={`${service.service_type}-${service.protocol}-${index}`}>
+                          <td>{index + 1}</td>
+                          <td>{service.service_type}</td>
+                          <td>{service.service_name || '-'}</td>
+                          <td>{service.called_at || '-'}</td>
+                          <td>{service.protocol || '-'}</td>
+                          <td>{service.notes || '-'}</td>
+                          {!readOnly && <td>
+                            <button type="button" className="btn btn-ghost" onClick={() => openExternalServiceModal(index)}>Editar</button>
+                            <button type="button" className="btn btn-ghost" onClick={() => removeExternalService(index)}>Excluir</button>
+                          </td>}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {isExternalServiceModalOpen && !readOnly && <div className="modal-overlay" onClick={closeExternalServiceModal}>
+                <div className="modal-card composicao-modal-card occurrence-service-modal" onClick={(event) => event.stopPropagation()}>
+                  <h3>{externalServiceEditIndex == null ? 'Adicionar acionamento' : 'Editar acionamento'}</h3>
+                  <div className="occurrence-service-modal-row">
+                    <div className="field">
+                      <label>Serviço</label>
+                      <select value={externalServiceDraft.service_type} disabled={loading} onChange={(event) => updateExternalServiceDraft('service_type', event.target.value)}>
+                        {EXTERNAL_SERVICES.map((item) => <option key={item} value={item}>{item}</option>)}
+                      </select>
                     </div>
                     <div className="field">
-                      <label>OBSERVAÇÃO</label>
-                      <input value={service.notes} disabled={readOnly || loading} onChange={(event) => updateExternalService(index, 'notes', event.target.value)} />
+                      <label>Nome do serviço</label>
+                      <input value={externalServiceDraft.service_name} disabled={loading || externalServiceDraft.service_type !== 'Outro'} onChange={(event) => updateExternalServiceDraft('service_name', event.target.value)} />
                     </div>
-                    {!readOnly && <button type="button" className="btn btn-ghost" onClick={() => removeExternalService(index)}>Remover acionamento</button>}
+                    <div className="field">
+                      <label>Horário</label>
+                      <input
+                        type="text"
+                        value={externalServiceDraft.called_at}
+                        maxLength={5}
+                        placeholder="HH:MM"
+                        disabled={loading}
+                        onChange={(event) => updateExternalServiceDraft('called_at', event.target.value)}
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Protocolo</label>
+                      <input value={externalServiceDraft.protocol} maxLength={80} disabled={loading} onChange={(event) => updateExternalServiceDraft('protocol', event.target.value)} />
+                    </div>
                   </div>
-                ))}
-              </div>
+                  <div className="field occurrence-service-notes">
+                    <label>Observação</label>
+                    <textarea rows={4} value={externalServiceDraft.notes} disabled={loading} onChange={(event) => updateExternalServiceDraft('notes', event.target.value)} />
+                  </div>
+                  <div className="form-actions">
+                    <button type="button" className="btn btn-ghost" onClick={closeExternalServiceModal}>Cancelar</button>
+                    <button type="button" onClick={saveExternalServiceDraft}>{externalServiceEditIndex == null ? 'Adicionar' : 'Atualizar'}</button>
+                  </div>
+                </div>
+              </div>}
             </div>
           )}
 
           {occurrenceTab === 'identification' && (
             <>
           <div className="occurrence-section">
-            <h3>Responsáveis pelo atendimento</h3>
+            <h3>Responsável pelo atendimento</h3>
             <p className="occurrence-helper-text">
-              Selecione manualmente os colaboradores que acompanharam ou trataram esta ocorrência. O registro de criação continua sendo gravado automaticamente pelo sistema.
+              O responsável é definido automaticamente como a pessoa logada no sistema.
             </p>
             <div className="occurrence-staff-grid">
-              {collaborators.map((collaborator) => (
-                <label className="occurrence-staff-option" key={collaborator.id}>
-                  <input type="checkbox" checked={form.staff_ids.includes(Number(collaborator.id))} disabled={readOnly || loading} onChange={() => toggleStaff(collaborator.id)} />
-                  <span>{collaborator.name}</span>
-                </label>
-              ))}
+              <div className="occurrence-staff-option occurrence-staff-option-readonly">
+                <span>{readOnly ? (form.staff_names[0] || form.creator_name || '-') : (auth?.user_name || '-')}</span>
+              </div>
             </div>
           </div>
 
@@ -670,7 +941,7 @@ export function RegistroOcorrenciasPage() {
               <label>LOCAL</label>
               <select className="occurrence-local-filter" value={filters.local} onChange={(event) => updateFilter('local', event.target.value)}>
                 <option value="">Todos</option>
-                {LOCATIONS.map((item) => <option key={item} value={item}>{item}</option>)}
+                {filterLocations.map((item) => <option key={item.id} value={item.name}>{formatLocationOption(item)}</option>)}
               </select>
             </div>
             <button type="button" className="btn btn-ghost compact-clear-button" onClick={clearFilters}>Limpar</button>

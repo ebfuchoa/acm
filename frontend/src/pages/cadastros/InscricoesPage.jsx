@@ -64,7 +64,7 @@ export function InscricoesPage() {
       <section>
         <h2>Cadastrar Inscrição em Atividade</h2>
         {error && <p className="error">{error}</p>}
-        <form className="card" onSubmit={save}>
+        <form className="card cadastro-form-card" onSubmit={save}>
           <div className="field"><label>ID do usuário</label><input value={form.user_id} onChange={(e) => setForm({ ...form, user_id: e.target.value })} required /></div>
           <div className="field"><label>ID da atividade</label><input value={form.activity_id} onChange={(e) => setForm({ ...form, activity_id: e.target.value })} required /></div>
           <div className="form-actions"><button type="button" className="btn btn-ghost" onClick={() => setMode('list')}>Voltar</button><button type="submit">Salvar</button></div>

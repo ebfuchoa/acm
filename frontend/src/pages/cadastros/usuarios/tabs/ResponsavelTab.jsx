@@ -2,7 +2,7 @@ import { StateCityFields } from '../../../../components/StateCityFields'
 
 export function ResponsavelTab({ form, isReadOnly, onChange, fieldErrors = {} }) {
   return <>
-    <strong className="section-title">Identificação e Situação de Trabalho do Responsável (Pai, Mãe ou Outro)</strong>
+    <strong className="section-title">IDENTIFICAÇÃO E SITUAÇÃO DE TRABALHO DO RESPONSÁVEL (PAI, MÃE OU OUTRO)</strong>
     <div className="form-row form-row-3">
       <div className="field"><label>Nome</label><input value={form.responsible_name} onChange={(e) => onChange('responsible_name', e.target.value)} required disabled={isReadOnly} aria-invalid={Boolean(fieldErrors.responsible_name)} /></div>
       <div className="field"><label>Idade</label><input value={form.responsible_age} onChange={(e) => onChange('responsible_age', e.target.value)} required disabled={isReadOnly} aria-invalid={Boolean(fieldErrors.responsible_age)} /></div>

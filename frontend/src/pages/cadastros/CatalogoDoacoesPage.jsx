@@ -172,7 +172,7 @@ export function CatalogoDoacoesPage() {
       <section>
         <h2>{readOnly ? 'Visualizar Catálogo de doação' : editingId ? 'Editar Catálogo de doação' : 'Cadastrar Catálogo de doação'}</h2>
         {error && <p className="error">{error}</p>}
-        <form onSubmit={save} className="card" noValidate>
+        <form onSubmit={save} className="card cadastro-form-card" noValidate>
           <div className="form-row">
             <div className="field donation-catalog-description-field">
               <label>Descrição</label>

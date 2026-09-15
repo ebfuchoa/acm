@@ -1,6 +1,6 @@
 export function SituacaoTab({ form, isReadOnly, onChangeSituacao, toggleSituacaoOption }) {
   return <>
-    <strong className="section-title">Situação Habitacional</strong>
+    <strong className="section-title">SITUAÇÃO HABITACIONAL</strong>
     <div className="situacao-columns">
       <div className="situacao-group">
         <label className="situacao-group-title">Tipo de Habitação</label>

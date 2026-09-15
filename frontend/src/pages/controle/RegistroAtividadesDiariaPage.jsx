@@ -360,7 +360,7 @@ export function RegistroAtividadesDiariaPage() {
           </div>
         </div>
 
-        <div className="card daily-activity-form-card">
+        <div className="card cadastro-form-card daily-activity-form-card">
           <div className="form-row form-row-3">
             <div className="field">
               <DatePickerBr label="Data" value={form.activity_date} onChange={(value) => updateField('activity_date', value)} required disabled={loading || saving || readOnly} />

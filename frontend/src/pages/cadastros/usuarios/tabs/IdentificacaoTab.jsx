@@ -24,7 +24,7 @@ export function IdentificacaoTab({ form, isReadOnly, onChange, fieldErrors = {} 
       <div className="field"><label>NIS</label><input value={form.nis_number} onChange={(e) => onChange('nis_number', e.target.value)} required disabled={isReadOnly} aria-invalid={Boolean(fieldErrors.nis_number)} /></div>
       <div className="field"><label>Turno</label><select value={form.shift} onChange={(e) => onChange('shift', e.target.value)} required disabled={isReadOnly} aria-invalid={Boolean(fieldErrors.shift)}><option value="">Turno</option><option>Manhã</option><option>Tarde</option></select></div>
     </div>
-    <strong className="section-title">Filiação</strong>
+    <strong className="section-title">FILIAÇÃO</strong>
     <div className="field"><label>Nome do Pai</label><input value={form.father_name} onChange={(e) => onChange('father_name', e.target.value)} disabled={isReadOnly} /></div>
     <div className="field"><label>Nome da Mãe</label><input value={form.mother_name} onChange={(e) => onChange('mother_name', e.target.value)} disabled={isReadOnly} /></div>
   </>

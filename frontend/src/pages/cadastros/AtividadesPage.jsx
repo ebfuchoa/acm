@@ -208,7 +208,7 @@ export function AtividadesPage() {
       <section>
         <h2>{editingId ? 'Editar Atividade' : 'Cadastrar Atividade'}</h2>
         {error && <p className="error">{error}</p>}
-        <form onSubmit={onSave} className="card" noValidate>
+        <form onSubmit={onSave} className="card cadastro-form-card" noValidate>
           <div className="form-row" style={{ gridTemplateColumns: '1.8fr 0.8fr' }}>
             <div className="field">
               <label>Nome <span className="required-mark">*</span></label>

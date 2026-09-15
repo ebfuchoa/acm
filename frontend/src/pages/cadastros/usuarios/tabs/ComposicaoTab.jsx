@@ -25,7 +25,7 @@ export function ComposicaoTab({
   adicionarComposicao,
 }) {
   return <>
-    <strong className="section-title">Composição Familiar</strong>
+    <strong className="section-title">COMPOSIÇÃO FAMILIAR</strong>
     {!isReadOnly && <div className="form-actions" style={{ marginBottom: 12 }}>
       <button type="button" onClick={() => abrirModalComposicao()}>Adicionar membro</button>
     </div>}

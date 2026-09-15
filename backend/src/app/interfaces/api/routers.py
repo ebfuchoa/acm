@@ -94,6 +94,30 @@ def _require_donation_receipt_access(ctx: AuthContext) -> None:
         raise HTTPException(status_code=403, detail='Acesso negado para Recebimento de Doações.')
 
 
+def _local_unit_scope(ctx: AuthContext, unit_id: int | None = None) -> int | None:
+    if _can_access_unit_management(ctx):
+        return unit_id
+    if ctx.social_unit_id is None:
+        raise HTTPException(status_code=403, detail='Unidade Social obrigatória para acessar locais.')
+    if unit_id is not None and int(unit_id) != int(ctx.social_unit_id):
+        raise HTTPException(status_code=403, detail='Acesso nao autorizado para esta Unidade Social.')
+    return int(ctx.social_unit_id)
+
+
+def _serialize_local(item: models.Local) -> dict:
+    return {
+        "id": item.id,
+        "name": item.name,
+        "unit_id": item.unit_id,
+        "unit_name": item.unit.name if item.unit else None,
+        "is_active": item.is_active,
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "created_by": item.created_by,
+        "updated_by": item.updated_by,
+    }
+
+
 def _serialize_unit_management(unit: models.Unit) -> dict:
     return {
         "id": unit.id,
@@ -826,9 +850,9 @@ def _serialize_occurrence(occurrence: models.Occurrence) -> dict:
         "unit_id": occurrence.unit_id,
         "unit_name": occurrence.unit.name if occurrence.unit else None,
         "occurrence_date": occurrence.occurrence_date,
+        "occurrence_time": occurrence.occurrence_time,
         "occurrence_shift": occurrence.occurrence_shift,
         "location": occurrence.location,
-        "location_details": occurrence.location_details,
         "category_id": occurrence.category_id,
         "category_name": occurrence.category.name if occurrence.category else None,
         "severity": occurrence.severity,
@@ -899,10 +923,32 @@ def _get_occurrence_scoped(db: Session, occurrence_id: int, ctx: AuthContext) ->
     return occurrence
 
 
-def _validate_occurrence_references(db: Session, payload: schemas.OccurrenceBase, unit_id: int, ctx: AuthContext) -> models.OccurrenceCategory:
+def _validate_occurrence_references(
+    db: Session,
+    payload: schemas.OccurrenceBase,
+    unit_id: int,
+    ctx: AuthContext,
+) -> tuple[models.OccurrenceCategory, models.Local]:
     category = db.get(models.OccurrenceCategory, payload.category_id)
     if category is None or not category.is_active:
         raise HTTPException(status_code=400, detail="Categoria de ocorrência inválida.")
+
+    location_filters = [
+        models.Local.is_active.is_(True),
+        func.lower(models.Local.name) == payload.location.lower(),
+    ]
+    if not ctx.is_admin:
+        location_filters.append(models.Local.unit_id == unit_id)
+    location = db.scalar(select(models.Local).where(and_(*location_filters)).order_by(models.Local.unit_id.asc()))
+    if location is None:
+        raise HTTPException(status_code=400, detail="Local inválido para a Unidade Social da ocorrência.")
+
+    effective_unit_id = location.unit_id if ctx.is_admin else unit_id
+    if not ctx.is_admin and location.unit_id != unit_id:
+        raise HTTPException(status_code=403, detail="Local pertence a outra Unidade Social.")
+    if ctx.is_admin and location.unit_id != unit_id:
+        raise HTTPException(status_code=403, detail="Local não pertence à Unidade Social informada.")
+
     for person in payload.people:
         if person.user_id:
             user = db.get(models.User, person.user_id)
@@ -910,27 +956,27 @@ def _validate_occurrence_references(db: Session, payload: schemas.OccurrenceBase
                 raise HTTPException(status_code=400, detail="Usuário envolvido não encontrado.")
             if user.status != UserStatus.ACTIVE:
                 raise HTTPException(status_code=400, detail="Usuário envolvido deve estar ativo.")
-            if not ctx.is_admin and user.unit_id != unit_id:
+            if not ctx.is_admin and user.unit_id != effective_unit_id:
                 raise HTTPException(status_code=403, detail="Usuário envolvido pertence a outra unidade social.")
-    if payload.staff_ids:
-        staff_query = select(func.count(models.Collaborator.id)).where(
-            and_(
-                models.Collaborator.id.in_(payload.staff_ids),
-                models.Collaborator.is_active.is_(True),
-            )
-        )
-        if not ctx.is_admin:
-            staff_query = staff_query.where(models.Collaborator.social_unit_id == unit_id)
-        staff_count = db.scalar(staff_query) or 0
-        if staff_count != len(set(payload.staff_ids)):
-            raise HTTPException(status_code=400, detail="Há colaborador responsável inválido para a ocorrência.")
-    return category
+            if ctx.is_admin and user.unit_id != effective_unit_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Usuário envolvido deve pertencer à mesma Unidade Social do local selecionado.",
+                )
+    return category, location
 
 
-def _sync_occurrence_children(db: Session, occurrence: models.Occurrence, payload: schemas.OccurrenceBase) -> None:
+def _sync_occurrence_children(
+    db: Session,
+    occurrence: models.Occurrence,
+    payload: schemas.OccurrenceBase,
+    responsible_collaborator_id: int,
+) -> None:
     occurrence.people.clear()
     occurrence.external_services.clear()
-    occurrence.staff.clear()
+    for staff in list(occurrence.staff):
+        if staff.collaborator_id != responsible_collaborator_id:
+            occurrence.staff.remove(staff)
     for person in payload.people:
         occurrence.people.append(
             models.OccurrencePerson(
@@ -950,8 +996,8 @@ def _sync_occurrence_children(db: Session, occurrence: models.Occurrence, payloa
                 notes=service.notes,
             )
         )
-    for collaborator_id in payload.staff_ids:
-        occurrence.staff.append(models.OccurrenceStaff(collaborator_id=collaborator_id))
+    if not any(staff.collaborator_id == responsible_collaborator_id for staff in occurrence.staff):
+        occurrence.staff.append(models.OccurrenceStaff(collaborator_id=responsible_collaborator_id))
 
 
 def _append_occurrence_history(occurrence: models.Occurrence, action: str, description: str, user_id: int | None) -> None:
@@ -1088,15 +1134,20 @@ def create_occurrence(
 ):
     _require_occurrence_access(ctx)
     collaborator = _current_collaborator(db, ctx)
-    unit_id = collaborator.social_unit_id
-    _validate_occurrence_references(db, payload, unit_id, ctx)
+    unit_id = payload.unit_id if ctx.is_admin else collaborator.social_unit_id
+    if unit_id is None:
+        raise HTTPException(status_code=400, detail="Unidade Social obrigatória para ocorrência.")
+    unit = db.get(models.Unit, unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Unidade Social não encontrada.")
+    _, location = _validate_occurrence_references(db, payload, unit_id, ctx)
     occurrence = models.Occurrence(
         number=_generate_occurrence_number(db, payload.occurrence_date),
         unit_id=unit_id,
         occurrence_date=payload.occurrence_date,
+        occurrence_time=payload.occurrence_time,
         occurrence_shift=payload.occurrence_shift,
         location=payload.location,
-        location_details=payload.location_details,
         category_id=payload.category_id,
         severity=payload.severity,
         description=payload.description,
@@ -1114,7 +1165,7 @@ def create_occurrence(
     if payload.status == "Cancelada":
         occurrence.cancelled_by = ctx.user_id
         occurrence.cancelled_at = datetime.utcnow()
-    _sync_occurrence_children(db, occurrence, payload)
+    _sync_occurrence_children(db, occurrence, payload, collaborator.id)
     _append_occurrence_history(occurrence, "Criação", "Ocorrência registrada.", ctx.user_id)
     db.add(occurrence)
     db.commit()
@@ -1130,19 +1181,28 @@ def update_occurrence(
     ctx: AuthContext = Depends(get_current_auth_context),
 ):
     _require_occurrence_access(ctx)
+    collaborator = _current_collaborator(db, ctx)
     occurrence = _get_occurrence_scoped(db, occurrence_id, ctx)
     if occurrence.status in OCCURRENCE_TERMINAL_STATUSES and payload.status != occurrence.status:
         raise HTTPException(status_code=400, detail="Ocorrência em status terminal não pode mudar de status.")
     allowed_statuses = OCCURRENCE_ALLOWED_TRANSITIONS.get(occurrence.status, {occurrence.status})
     if payload.status not in allowed_statuses:
         raise HTTPException(status_code=400, detail="Transição de status inválida.")
-    _validate_occurrence_references(db, payload, occurrence.unit_id, ctx)
+    target_unit_id = payload.unit_id if ctx.is_admin else occurrence.unit_id
+    if target_unit_id is None:
+        raise HTTPException(status_code=400, detail="Unidade Social obrigatória para ocorrência.")
+    unit = db.get(models.Unit, target_unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Unidade Social não encontrada.")
+    _, location = _validate_occurrence_references(db, payload, target_unit_id, ctx)
 
     previous_status = occurrence.status
+    if ctx.is_admin:
+        occurrence.unit_id = target_unit_id
     occurrence.occurrence_date = payload.occurrence_date
+    occurrence.occurrence_time = payload.occurrence_time
     occurrence.occurrence_shift = payload.occurrence_shift
     occurrence.location = payload.location
-    occurrence.location_details = payload.location_details
     occurrence.category_id = payload.category_id
     occurrence.severity = payload.severity
     occurrence.description = payload.description
@@ -1164,7 +1224,7 @@ def update_occurrence(
         _append_occurrence_history(occurrence, "Mudança de status", f"Status alterado de {previous_status} para {payload.status}.", ctx.user_id)
     else:
         _append_occurrence_history(occurrence, "Edição", "Ocorrência atualizada.", ctx.user_id)
-    _sync_occurrence_children(db, occurrence, payload)
+    _sync_occurrence_children(db, occurrence, payload, collaborator.id)
     db.commit()
     db.refresh(occurrence)
     return _serialize_occurrence(occurrence)
@@ -1353,6 +1413,76 @@ def delete_donation_catalog(
         raise HTTPException(status_code=404, detail='Item de doação não encontrado.')
     db.delete(item)
     db.commit()
+
+
+@router.get('/locais', response_model=schemas.LocalListResponse)
+def list_locals(
+    search: str = "",
+    unit_id: int | None = None,
+    page: int = 1,
+    page_size: int = 100,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    scoped_unit_id = _local_unit_scope(ctx, unit_id)
+    page = max(1, page)
+    page_size = min(100, max(1, page_size))
+    rows = CrudService(db).list_locals(unit_id=scoped_unit_id, search=search)
+    total = len(rows)
+    start = (page - 1) * page_size
+    page_rows = rows[start:start + page_size]
+    return {"items": [_serialize_local(row) for row in page_rows], "total": total, "page": page, "page_size": page_size}
+
+
+@router.get('/locais/{local_id}', response_model=schemas.LocalRead)
+def get_local(
+    local_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    item = CrudService(db).get_local(local_id)
+    _local_unit_scope(ctx, item.unit_id)
+    return _serialize_local(item)
+
+
+@router.post('/locais', response_model=schemas.LocalRead)
+def create_local(
+    payload: schemas.LocalCreate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    unit_id = _local_unit_scope(ctx, payload.unit_id)
+    if unit_id is None and payload.unit_id is None:
+        raise HTTPException(status_code=400, detail='Unidade Social obrigatória para local.')
+    payload.unit_id = payload.unit_id if unit_id is None else unit_id
+    item = CrudService(db).create_local(payload, user_id=ctx.user_id)
+    return _serialize_local(item)
+
+
+@router.put('/locais/{local_id}', response_model=schemas.LocalRead)
+def update_local(
+    local_id: int,
+    payload: schemas.LocalUpdate,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    current = CrudService(db).get_local(local_id)
+    _local_unit_scope(ctx, current.unit_id)
+    unit_id = _local_unit_scope(ctx, payload.unit_id)
+    payload.unit_id = payload.unit_id if unit_id is None else unit_id
+    item = CrudService(db).update_local(local_id, payload, user_id=ctx.user_id)
+    return _serialize_local(item)
+
+
+@router.delete('/locais/{local_id}', status_code=204)
+def delete_local(
+    local_id: int,
+    db: Session = Depends(get_db),
+    ctx: AuthContext = Depends(get_current_auth_context),
+):
+    item = CrudService(db).get_local(local_id)
+    _local_unit_scope(ctx, item.unit_id)
+    CrudService(db).delete_local(local_id, user_id=ctx.user_id)
 
 
 @router.get('/autenticacao/unidades-sociais', response_model=list[schemas.SocialUnitOption])

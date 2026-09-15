@@ -640,6 +640,82 @@ class CrudService:
         self.db.delete(item)
         self.db.commit()
 
+    def _ensure_unique_local_name(self, unit_id: int, name: str, ignore_id: int | None = None) -> None:
+        query = select(models.Local).where(
+            and_(
+                models.Local.unit_id == unit_id,
+                models.Local.is_active.is_(True),
+                func.lower(models.Local.name) == name.lower(),
+            )
+        )
+        if ignore_id is not None:
+            query = query.where(models.Local.id != ignore_id)
+        duplicate = self.db.scalar(query)
+        if duplicate is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Já existe um local cadastrado com este nome para esta Unidade Social.")
+
+    def create_local(self, payload: schemas.LocalCreate, user_id: int | None = None) -> models.Local:
+        local_name = payload.name.strip()
+        if payload.unit_id is None:
+            raise HTTPException(status_code=400, detail="Unidade Social obrigatória para local.")
+        unit = self.db.get(models.Unit, payload.unit_id)
+        if unit is None:
+            raise HTTPException(status_code=404, detail="Unidade Social não encontrada.")
+        self._ensure_unique_local_name(payload.unit_id, local_name)
+        item = models.Local(
+            name=local_name,
+            unit_id=payload.unit_id,
+            created_by=user_id,
+            updated_by=user_id,
+        )
+        self.db.add(item)
+        self.db.commit()
+        self.db.refresh(item)
+        return item
+
+    def list_locals(self, unit_id: int | None = None, search: str = "", include_inactive: bool = False) -> list[models.Local]:
+        query = select(models.Local)
+        if not include_inactive:
+            query = query.where(models.Local.is_active.is_(True))
+        if unit_id is not None:
+            query = query.where(models.Local.unit_id == unit_id)
+        term = search.strip().lower()
+        if term:
+            query = query.join(models.Unit).where(
+                or_(
+                    func.lower(models.Local.name).contains(term),
+                    func.lower(models.Unit.name).contains(term),
+                )
+            )
+        return list(self.db.scalars(query.order_by(models.Local.name.asc())).all())
+
+    def get_local(self, local_id: int) -> models.Local:
+        item = self.db.get(models.Local, local_id)
+        if item is None or not item.is_active:
+            raise HTTPException(status_code=404, detail="Local não encontrado.")
+        return item
+
+    def update_local(self, local_id: int, payload: schemas.LocalUpdate, user_id: int | None = None) -> models.Local:
+        item = self.get_local(local_id)
+        local_name = payload.name.strip()
+        target_unit_id = payload.unit_id or item.unit_id
+        unit = self.db.get(models.Unit, target_unit_id)
+        if unit is None:
+            raise HTTPException(status_code=404, detail="Unidade Social não encontrada.")
+        self._ensure_unique_local_name(target_unit_id, local_name, ignore_id=local_id)
+        item.name = local_name
+        item.unit_id = target_unit_id
+        item.updated_by = user_id
+        self.db.commit()
+        self.db.refresh(item)
+        return item
+
+    def delete_local(self, local_id: int, user_id: int | None = None) -> None:
+        item = self.get_local(local_id)
+        item.is_active = False
+        item.updated_by = user_id
+        self.db.commit()
+
     def create_enrollment(self, payload: schemas.EnrollmentCreate) -> models.Enrollment:
         enrollment = models.Enrollment(**payload.model_dump())
         self.db.add(enrollment)

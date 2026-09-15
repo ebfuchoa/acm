@@ -168,7 +168,7 @@ export function GruposPage() {
       <section>
         <h2>{editingId ? 'Editar Grupo' : 'Cadastrar Grupo'}</h2>
         {error && <p className="error">{error}</p>}
-        <form onSubmit={onSave} className="card" noValidate>
+        <form onSubmit={onSave} className="card cadastro-form-card" noValidate>
           <div className="form-row form-row-4">
             <div className="field">
               <label>Nome</label>

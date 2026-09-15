@@ -63,13 +63,13 @@ export function CadastrosPage() {
       <h2>Cadastros Base</h2>
       {error && <p className="error">{error}</p>}
       <div className="grid">
-        <form onSubmit={createUnit} className="card" id="unidade-social">
+        <form onSubmit={createUnit} className="card cadastro-form-card" id="unidade-social">
           <h3>Nova Unidade Social</h3>
           <input value={unitName} onChange={(e) => setUnitName(e.target.value)} placeholder="Nome da unidade" required />
           <button type="submit">Salvar Unidade</button>
         </form>
 
-        <form onSubmit={createUser} className="card" id="usuario">
+        <form onSubmit={createUser} className="card cadastro-form-card" id="usuario">
           <h3>Novo Usuário</h3>
           <input placeholder="ID da unidade" value={userForm.unit_id} onChange={(e) => setUserForm({ ...userForm, unit_id: e.target.value })} required />
           <input placeholder="Nome" value={userForm.full_name} onChange={(e) => setUserForm({ ...userForm, full_name: e.target.value })} required />
@@ -77,7 +77,7 @@ export function CadastrosPage() {
           <button type="submit">Salvar Usuário</button>
         </form>
 
-        <form onSubmit={createActivity} className="card" id="atividades">
+        <form onSubmit={createActivity} className="card cadastro-form-card" id="atividades">
           <h3>Nova Atividade</h3>
           <input placeholder="ID da unidade" value={activityForm.unit_id} onChange={(e) => setActivityForm({ ...activityForm, unit_id: e.target.value })} required />
           <input placeholder="Nome" value={activityForm.name} onChange={(e) => setActivityForm({ ...activityForm, name: e.target.value })} required />
@@ -95,5 +95,4 @@ export function CadastrosPage() {
     </section>
   )
 }
-
 

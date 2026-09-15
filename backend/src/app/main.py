@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -78,6 +78,23 @@ def on_startup() -> None:
                     """
                     CREATE UNIQUE INDEX IF NOT EXISTS uq_catalogo_doacao_descricao_lower
                     ON catalogo_doacao (lower(descricao))
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_local_unidade_nome_lower_ativo
+                    ON local (unidade_social_id, lower(nome))
+                    WHERE ativo = true
+                    """
+                )
+            )
+            connection.execute(
+                text(
+                    """
+                    CREATE INDEX IF NOT EXISTS ix_local_unidade_ativo_nome
+                    ON local (unidade_social_id, ativo, nome)
                     """
                 )
             )
@@ -253,19 +270,19 @@ def on_startup() -> None:
                     INSERT INTO ocorrencia_categoria (nome)
                     VALUES
                         ('Atendimento emergencial'),
-                        ('Saúde / mal-estar'),
+                        ('SaÃºde / mal-estar'),
                         ('Acidente'),
                         ('Comportamental'),
                         ('Conflito'),
-                        ('Segurança'),
-                        ('Incêndio'),
+                        ('SeguranÃ§a'),
+                        ('IncÃªndio'),
                         ('Infraestrutura'),
-                        ('Problema elétrico'),
-                        ('Problema hidráulico'),
-                        ('Patrimônio'),
-                        ('Atendimento não programado'),
-                        ('Pessoa externa à ACM'),
-                        ('Funcionário'),
+                        ('Problema elÃ©trico'),
+                        ('Problema hidrÃ¡ulico'),
+                        ('PatrimÃ´nio'),
+                        ('Atendimento nÃ£o programado'),
+                        ('Pessoa externa Ã  ACM'),
+                        ('FuncionÃ¡rio'),
                         ('Visitante'),
                         ('Outros')
                     ON CONFLICT (nome) DO NOTHING
@@ -280,9 +297,9 @@ def on_startup() -> None:
                         numero VARCHAR(20) NOT NULL UNIQUE,
                         unidade_social_id INTEGER NOT NULL REFERENCES unidade_social(id),
                         data_ocorrencia DATE NOT NULL,
-                        turno VARCHAR(20) NOT NULL DEFAULT 'Manhã',
+                        hora_ocorrencia TIME,
+                        turno VARCHAR(20) NOT NULL DEFAULT 'ManhÃ£',
                         local VARCHAR(80) NOT NULL,
-                        local_detalhe VARCHAR(150),
                         categoria_id INTEGER NOT NULL REFERENCES ocorrencia_categoria(id),
                         gravidade VARCHAR(20) NOT NULL,
                         descricao TEXT NOT NULL,
@@ -299,13 +316,15 @@ def on_startup() -> None:
                         atualizado_em TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
                         resolvido_em TIMESTAMP WITHOUT TIME ZONE,
                         cancelado_em TIMESTAMP WITHOUT TIME ZONE,
-                        CONSTRAINT ck_ocorrencia_gravidade CHECK (gravidade IN ('Baixa', 'Média', 'Alta', 'Crítica')),
+                        CONSTRAINT ck_ocorrencia_gravidade CHECK (gravidade IN ('Baixa', 'MÃ©dia', 'Alta', 'CrÃ­tica')),
                         CONSTRAINT ck_ocorrencia_status CHECK (status IN ('Aberta', 'Em acompanhamento', 'Resolvida', 'Cancelada'))
                     )
                     """
                 )
             )
-            connection.execute(text("ALTER TABLE ocorrencia ADD COLUMN IF NOT EXISTS turno VARCHAR(20) NOT NULL DEFAULT 'Manhã'"))
+            connection.execute(text("ALTER TABLE ocorrencia ADD COLUMN IF NOT EXISTS turno VARCHAR(20) NOT NULL DEFAULT 'ManhÃ£'"))
+            connection.execute(text("ALTER TABLE ocorrencia ADD COLUMN IF NOT EXISTS hora_ocorrencia TIME"))
+            connection.execute(text("ALTER TABLE ocorrencia DROP COLUMN IF EXISTS local_detalhe"))
             connection.execute(
                 text(
                     """

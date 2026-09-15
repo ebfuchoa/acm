@@ -178,7 +178,7 @@ export function AtendimentosPage() {
       <section>
         <h2>{readOnly ? 'Visualizar Atendimento' : editingId ? 'Editar Atendimento' : 'Novo Atendimento'}</h2>
         {error && <p className="error">{error}</p>}
-        <form onSubmit={onSave} className="card" noValidate>
+        <form onSubmit={onSave} className="card cadastro-form-card" noValidate>
           <div className="form-row atendimento-form-row">
             <div className="field">
               <DatePickerBr

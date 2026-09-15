@@ -132,6 +132,42 @@ class DonationCatalogListResponse(BaseSchema):
     page_size: int
 
 
+class LocalCreate(BaseSchema):
+    name: str = Field(min_length=1, max_length=120)
+    unit_id: int | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        cleaned = " ".join(value.strip().split())
+        if not cleaned:
+            raise ValueError("Informe o local.")
+        return cleaned
+
+
+class LocalUpdate(LocalCreate):
+    pass
+
+
+class LocalRead(BaseSchema):
+    id: int
+    name: str
+    unit_id: int
+    unit_name: str | None = None
+    is_active: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    created_by: int | None = None
+    updated_by: int | None = None
+
+
+class LocalListResponse(BaseSchema):
+    items: list[LocalRead]
+    total: int
+    page: int
+    page_size: int
+
+
 def _digits_only(value: str | None) -> str:
     return re.sub(r"\D", "", value or "")
 
@@ -1069,16 +1105,6 @@ class FrequenciaSemanaSavePayload(BaseSchema):
 OCCURRENCE_SEVERITIES = {"Baixa", "Média", "Alta", "Crítica"}
 OCCURRENCE_STATUSES = {"Aberta", "Em acompanhamento", "Resolvida", "Cancelada"}
 OCCURRENCE_SHIFTS = {"Manhã", "Tarde"}
-OCCURRENCE_LOCATIONS = {
-    "Recepção",
-    "Sala de atendimento",
-    "Sala administrativa",
-    "Área externa",
-    "Banheiro",
-    "Cozinha",
-    "Corredor",
-    "Outro",
-}
 OCCURRENCE_PERSON_TYPES = {
     "Usuário ACM",
     "Funcionário",
@@ -1157,10 +1183,11 @@ class OccurrenceExternalServicePayload(BaseSchema):
 
 
 class OccurrenceBase(BaseSchema):
+    unit_id: int | None = None
     occurrence_date: date
+    occurrence_time: time | None = None
     occurrence_shift: str = Field(min_length=1, max_length=20)
     location: str = Field(min_length=1, max_length=80)
-    location_details: str | None = Field(default=None, max_length=150)
     category_id: int
     severity: str = Field(min_length=1, max_length=20)
     description: str = Field(min_length=1)
@@ -1176,10 +1203,7 @@ class OccurrenceBase(BaseSchema):
     @field_validator("location")
     @classmethod
     def validate_location(cls, value: str) -> str:
-        cleaned = normalize_required_text(value)
-        if cleaned not in OCCURRENCE_LOCATIONS:
-            raise ValueError("Local inválido.")
-        return cleaned
+        return normalize_required_text(value)
 
     @field_validator("severity")
     @classmethod
@@ -1205,7 +1229,7 @@ class OccurrenceBase(BaseSchema):
             raise ValueError("Status inválido.")
         return cleaned
 
-    @field_validator("location_details", "actions_taken", "resolution", "additional_notes", "cancellation_reason")
+    @field_validator("actions_taken", "resolution", "additional_notes", "cancellation_reason")
     @classmethod
     def normalize_optional_fields(cls, value: str | None) -> str | None:
         return normalize_optional_text(value)
@@ -1222,8 +1246,6 @@ class OccurrenceBase(BaseSchema):
 
     @model_validator(mode="after")
     def validate_status_requirements(self):
-        if self.location == "Outro" and not self.location_details:
-            raise ValueError("Informe o local quando selecionar Outro.")
         if self.status == "Resolvida" and not self.resolution:
             raise ValueError("Informe o desfecho/resolução para ocorrência resolvida.")
         if self.status == "Cancelada" and not self.cancellation_reason:
@@ -1268,9 +1290,9 @@ class OccurrenceRead(BaseSchema):
     unit_id: int
     unit_name: str | None = None
     occurrence_date: date
+    occurrence_time: time | None = None
     occurrence_shift: str
     location: str
-    location_details: str | None = None
     category_id: int
     category_name: str | None = None
     severity: str

@@ -99,7 +99,7 @@ export function ColaboradoresPage() {
       <section>
         <h2>{editingId ? 'Editar Colaborador' : 'Cadastrar Colaborador'}</h2>
         {error && <p className="error">{error}</p>}
-        <form onSubmit={onSave} className="card">
+        <form onSubmit={onSave} className="card cadastro-form-card">
           <div className="form-row form-row-3">
             <div className="field"><label>Nome</label><input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required /></div>
             <div className="field"><label>CPF</label><input value={form.cpf} onChange={(e) => setForm((p) => ({ ...p, cpf: maskCpf(e.target.value) }))} required /></div>
